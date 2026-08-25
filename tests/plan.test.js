@@ -1,0 +1,162 @@
+/*
+ * plan.test.js — curriculum integrity and planner arithmetic.
+ * No dependencies:  node tests/plan.test.js
+ */
+global.window = global;
+var path = require('path');
+var root = path.join(__dirname, '..', 'assets', 'js');
+require(path.join(root, 'data', 'disciplines.js'));
+require(path.join(root, 'data', 'dispatch.js'));
+require(path.join(root, 'engine.js'));
+require(path.join(root, 'dispatch-core.js'));
+
+var fails = 0;
+function check(label, cond, extra) {
+  if (!cond) { fails++; console.log('FAIL  ' + label + (extra ? '  → ' + extra : '')); }
+}
+
+console.log('disciplines:', DISCIPLINES.length);
+console.log('tracks:', DISPATCH_TRACKS.length,
+  'entries:', DISPATCH_TRACKS.reduce((a, t) => a + t.entries.length, 0));
+
+/* --- data integrity --------------------------------------------------- */
+var ids = {};
+DISCIPLINES.forEach(function (d) {
+  check('unique id ' + d.id, !ids[d.id]); ids[d.id] = 1;
+  ['functional', 'competent', 'professional', 'elite'].forEach(function (k) {
+    check(d.id + ' has hours.' + k, typeof d.hours[k] === 'number');
+    check(d.id + ' has proofs.' + k, !!d.proofs[k]);
+  });
+  check(d.id + ' hours ascend',
+    d.hours.functional < d.hours.competent &&
+    d.hours.competent < d.hours.professional &&
+    d.hours.professional < d.hours.elite);
+  var w = d.pillars.reduce(function (a, p) { return a + p.weight; }, 0);
+  check(d.id + ' weights ≈ 1', Math.abs(w - 1) < 0.02, w.toFixed(3));
+  d.pillars.forEach(function (p) {
+    check(d.id + '/' + p.id + ' drills', p.drills.length >= 3);
+    check(d.id + '/' + p.id + ' criteria', p.milestone.criteria.length >= 3);
+    check(d.id + '/' + p.id + ' specialization', !!p.specialization);
+    p.drills.forEach(function (dr) {
+      check(d.id + '/' + p.id + '/' + dr.name + ' protocol', !!dr.protocol && !!dr.dose);
+    });
+  });
+  ['metrics', 'failureModes', 'arena', 'library'].forEach(function (k) {
+    check(d.id + ' has ' + k, Array.isArray(d[k]) && d[k].length >= 3);
+  });
+});
+
+DISPATCH_TRACKS.forEach(function (t) {
+  check(t.id + ' >=10 entries', t.entries.length >= 10, t.entries.length);
+  t.entries.forEach(function (e, i) {
+    ['source', 'author', 'reading', 'practice', 'tension'].forEach(function (k) {
+      check(t.id + '[' + i + '].' + k, !!e[k] && e[k].length > 3);
+    });
+  });
+});
+
+/* --- planner across the input space ----------------------------------- */
+var levels = ['novice', 'developing', 'working', 'advanced'];
+var cases = 0;
+DISCIPLINES.forEach(function (d) {
+  [1, 4, 12, 52, 104].forEach(function (weeks) {
+    [1, 8, 45].forEach(function (hours) {
+      [1, 5, 7].forEach(function (days) {
+        levels.forEach(function (level) {
+          cases++;
+          var p = Planner.build({
+            disciplineId: d.id, weeks: weeks, hoursPerWeek: hours,
+            daysPerWeek: days, level: level, startDate: '2026-08-24'
+          });
+          check('phases exist ' + d.id + ' ' + weeks + 'w', p.phases.length >= 1);
+          var phaseWeeks = p.phases.reduce(function (a, ph) { return a + ph.weeks; }, 0);
+          check('phase weeks == horizon ' + d.id + ' ' + weeks + 'w/' + hours + 'h',
+            phaseWeeks === p.input.weeks, phaseWeeks + ' vs ' + p.input.weeks);
+          check('schedule length ' + d.id, p.schedule.length === p.input.weeks,
+            p.schedule.length + ' vs ' + p.input.weeks);
+          p.schedule.forEach(function (w) {
+            check('sessions per week ' + d.id + ' w' + w.number,
+              w.sessions.length === p.input.daysPerWeek,
+              w.sessions.length + ' vs ' + p.input.daysPerWeek);
+            w.sessions.forEach(function (s) {
+              check('session has focus', typeof s.focus === 'string' && s.focus.length > 0);
+              check('session hours > 0', s.hours > 0, String(s.hours));
+              check('session date valid', s.date instanceof Date && !isNaN(s.date));
+            });
+          });
+          check('verdict statement ' + d.id, !!p.verdict.statement);
+          check('verdict owns ' + d.id, !!p.verdict.owns);
+          check('gates == phases', p.phases.length ===
+            p.schedule.filter(function (w) { return w.gate; }).length);
+          var md = Planner.toMarkdown(p);
+          check('markdown non-trivial', md.length > 1500, String(md.length));
+          check('markdown no undefined', md.indexOf('undefined') === -1);
+          var ics = Planner.toICS(p);
+          check('ics wrapped', /^BEGIN:VCALENDAR/.test(ics) && /END:VCALENDAR$/.test(ics));
+          check('ics no undefined', ics.indexOf('undefined') === -1);
+          var events = (ics.match(/BEGIN:VEVENT/g) || []).length;
+          check('ics events count', events === p.sessionCount + p.phases.length,
+            events + ' vs ' + (p.sessionCount + p.phases.length));
+          ics.split('\r\n').forEach(function (line) {
+            check('ics line length', line.length <= 75, line.slice(0, 30));
+          });
+        });
+      });
+    });
+  });
+});
+console.log('planner cases:', cases);
+
+/* --- clamping and odd input ------------------------------------------- */
+var weird = Planner.build({ disciplineId: 'persuasive-writing', weeks: 999, hoursPerWeek: 500, daysPerWeek: 99, level: 'nonsense' });
+check('weeks clamped', weird.input.weeks === 156, String(weird.input.weeks));
+check('hours clamped', weird.input.hoursPerWeek === 60, String(weird.input.hoursPerWeek));
+check('days clamped', weird.input.daysPerWeek === 7, String(weird.input.daysPerWeek));
+check('unknown level treated as novice', weird.verdict.bankedHours === 0);
+
+var tiny = Planner.build({ disciplineId: 'software-engineering', weeks: 1, hoursPerWeek: 1, daysPerWeek: 1, level: 'novice' });
+check('tiny program has 1 phase', tiny.phases.length === 1, String(tiny.phases.length));
+check('tiny program declares shortfall', /short of functional/.test(tiny.verdict.statement));
+check('tiny program cut scope', tiny.scope.dropped.length > 0);
+
+var huge = Planner.build({ disciplineId: 'learning-velocity', weeks: 156, hoursPerWeek: 40, daysPerWeek: 6, level: 'advanced' });
+check('huge program reaches elite', huge.verdict.reachedKey === 'elite', String(huge.verdict.reachedKey));
+check('elite has no next lever', huge.verdict.levers.length === 0);
+
+/* --- dispatch determinism --------------------------------------------- */
+var a = DispatchCore.entryFor('stoic', new Date(2026, 7, 25));
+var b = DispatchCore.entryFor('stoic', new Date(2026, 7, 25));
+check('dispatch deterministic', a.key === b.key);
+var c = DispatchCore.entryFor('stoic', new Date(2026, 7, 26));
+check('dispatch rotates', a.key !== c.key);
+var seen = {};
+for (var i = 0; i < 12; i++) {
+  var pick = DispatchCore.entryFor('stoic', new Date(2026, 7, 25 + i));
+  seen[pick.key] = (seen[pick.key] || 0) + 1;
+}
+check('12 days = 12 distinct stoic entries', Object.keys(seen).length === 12,
+  String(Object.keys(seen).length));
+var arch = DispatchCore.archiveFor('wealth', 14, new Date(2026, 7, 25));
+check('archive length', arch.length === 14);
+check('archive distinct from today',
+  arch[0].key !== DispatchCore.entryFor('wealth', new Date(2026, 7, 25)).key);
+
+/* --- a worked example -------------------------------------------------- */
+var demo = Planner.build({
+  disciplineId: 'negotiation', weeks: 8, hoursPerWeek: 6, daysPerWeek: 4,
+  level: 'novice', objective: 'Renegotiate my salary in November', startDate: '2026-08-24'
+});
+console.log('\n--- sample verdict (negotiation, 8wk × 6h) ---');
+console.log(demo.verdict.headline);
+console.log(demo.verdict.statement);
+console.log('owns :', demo.verdict.owns);
+console.log('lacks:', demo.verdict.lacks);
+demo.verdict.levers.forEach(l => console.log(' •', l.name + ':', l.detail));
+console.log('phases:', demo.phases.map(p => p.name + ' (' + p.weeks + 'w/' + p.hours + 'h)').join(' | '));
+console.log('dropped:', demo.scope.dropped.map(d => d.name).join(', ') || '(none)');
+console.log('week 1 sessions:');
+demo.schedule[0].sessions.forEach(s =>
+  console.log('  ', Planner.fmtShort(s.date), s.type.label.padEnd(13), s.hours + 'h', '-', s.focus.slice(0, 72)));
+
+console.log('\n' + (fails ? fails + ' FAILURES' : 'all checks passed'));
+process.exit(fails ? 1 : 0);

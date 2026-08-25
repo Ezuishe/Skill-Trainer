@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skill Trainer — Deliberate practice programs for high-leverage skills</title>
+<meta name="description" content="Commission a dated, drill-level training program for a high-leverage skill, scoped honestly against the hours you actually have.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/main.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23F4F1EA'/%3E%3Crect x='7' y='7' width='18' height='18' fill='%237B2F2C'/%3E%3C/svg%3E">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="wrap masthead__inner">
+    <a class="logo" href="index.html">Skill&nbsp;Trainer</a>
+    <nav class="nav" aria-label="Primary">
+      <a href="index.html#disciplines">Disciplines</a>
+      <a href="index.html#commission">Commission</a>
+      <a href="program.html">My program</a>
+      <a href="dispatch.html">Daily dispatch</a>
+      <a href="method.html">Method</a>
+    </nav>
+    <button class="theme-toggle" data-theme-toggle type="button">D</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ------------------------------------------------------------- hero -->
+  <section class="wrap hero">
+    <div class="hero__grid">
+      <div>
+        <span class="eyebrow">Deliberate practice, scheduled</span>
+        <h1>Mastery is a <em>schedule</em>,<br>not a wish.</h1>
+        <p class="lede" style="margin-top:1.75rem">
+          Tell us the skill and the hours you actually have. You get a dated program down to the
+          individual session: phases, drills, milestone gates you must pass before advancing, and an
+          honest verdict on what that budget buys — including when it does not buy mastery.
+        </p>
+        <div class="btn-row" style="margin-top:2.25rem">
+          <a class="btn" href="#commission">Commission a program</a>
+          <a class="btn btn--ghost" href="method.html">How it works</a>
+        </div>
+      </div>
+      <aside class="hero__meta">
+        <dl>
+          <div>
+            <dt>Disciplines</dt>
+            <dd><span class="mono" data-stat="disciplines">—</span> high-leverage skills, each with a full syllabus</dd>
+          </div>
+          <div>
+            <dt>Depth</dt>
+            <dd><span class="mono" data-stat="drills">—</span> named drills with protocols and doses</dd>
+          </div>
+          <div>
+            <dt>Gates</dt>
+            <dd><span class="mono" data-stat="gates">—</span> pass/fail milestones, externally checkable</dd>
+          </div>
+          <div>
+            <dt>Daily</dt>
+            <dd>A dispatch from one of six philosophical traditions, chosen by you</dd>
+          </div>
+          <div>
+            <dt>Privacy</dt>
+            <dd>No account, no server, no tracking. Everything stays in this browser.</dd>
+          </div>
+        </dl>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- premise -->
+  <section class="section">
+    <div class="wrap">
+      <div class="section__head">
+        <div class="section__num">00</div>
+        <div>
+          <h2>What this is, and what it refuses to be</h2>
+        </div>
+      </div>
+      <div class="grid grid--3">
+        <div>
+          <h4>No guarantees</h4>
+          <p class="small muted" style="margin:0">
+            Nothing here guarantees success, and any site that tells you otherwise is selling
+            something. What a program can honestly do is put your hours against a real syllabus,
+            with feedback loops and gates that make self-deception difficult.
+          </p>
+        </div>
+        <div>
+          <h4>Scoped against your hours</h4>
+          <p class="small muted" style="margin:0">
+            Four weeks at five hours a week is eighty hours. That is a real amount of training and
+            it is not professional competence in anything. The planner computes what your budget
+            actually reaches and says so before you start.
+          </p>
+        </div>
+        <div>
+          <h4>Drills, not reading lists</h4>
+          <p class="small muted" style="margin:0">
+            Every phase prescribes named drills with doses and protocols, a weekly session
+            structure, and a gate with criteria another person could verify. Reading is capped at a
+            quarter of your time.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------ disciplines -->
+  <section class="section" id="disciplines">
+    <div class="wrap">
+      <div class="section__head">
+        <div class="section__num">01</div>
+        <div>
+          <h2>The disciplines</h2>
+          <p class="lede" style="margin-top:1rem">
+            Thirteen skills selected on one criterion: they compound. Each converts into income,
+            autonomy or judgment, and each keeps paying long after the program ends. Choose one —
+            training two at once halves the rate of progress in both.
+          </p>
+        </div>
+      </div>
+      <div class="catalog" id="catalog" role="list"></div>
+      <p class="small muted" style="margin-top:1.25rem">
+        Hour figures are estimates of deliberate practice — focused work at the edge of your
+        ability with feedback — not time spent in the vicinity of the subject.
+      </p>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------- commission -->
+  <section class="section" id="commission">
+    <div class="wrap">
+      <div class="section__head">
+        <div class="section__num">02</div>
+        <div>
+          <h2>Commission your program</h2>
+          <p class="lede" style="margin-top:1rem">
+            Be accurate about the hours. A plan built on hours you do not have produces failure and
+            calls it a lack of discipline.
+          </p>
+        </div>
+      </div>
+
+      <div class="split">
+        <form id="builder" novalidate>
+          <div class="field">
+            <span class="field__label">Discipline</span>
+            <select id="f-discipline" aria-label="Discipline"></select>
+            <p class="field__hint" id="disc-thesis"></p>
+          </div>
+
+          <div class="field">
+            <span class="field__label">Where you are starting</span>
+            <div class="choice-row" id="f-level" role="group" aria-label="Starting level">
+              <button class="choice" type="button" data-value="novice" aria-pressed="true">
+                Novice<small>No meaningful exposure</small>
+              </button>
+              <button class="choice" type="button" data-value="developing" aria-pressed="false">
+                Developing<small>Dabbled, no structure</small>
+              </button>
+              <button class="choice" type="button" data-value="working" aria-pressed="false">
+                Functional<small>Can do it, plateaued</small>
+              </button>
+              <button class="choice" type="button" data-value="advanced" aria-pressed="false">
+                Competent<small>Pushing toward professional</small>
+              </button>
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="range-row">
+              <span class="field__label" style="margin:0">Horizon</span>
+              <span class="range-value"><span id="v-weeks">12</span> weeks</span>
+            </div>
+            <input type="range" id="f-weeks" min="2" max="104" step="1" value="12">
+            <p class="field__hint">Two weeks to two years. Longer horizons at lower intensity beat sprints at equal total hours.</p>
+          </div>
+
+          <div class="field">
+            <div class="range-row">
+              <span class="field__label" style="margin:0">Weekly hours</span>
+              <span class="range-value"><span id="v-hours">8</span> h/week</span>
+            </div>
+            <input type="range" id="f-hours" min="1" max="45" step="1" value="8">
+            <p class="field__hint">Deliberate practice hours only. Count what you will genuinely protect, not what you hope for.</p>
+          </div>
+
+          <div class="field">
+            <div class="range-row">
+              <span class="field__label" style="margin:0">Sessions per week</span>
+              <span class="range-value"><span id="v-days">5</span> days</span>
+            </div>
+            <input type="range" id="f-days" min="1" max="7" step="1" value="5">
+            <p class="field__hint" id="session-length"></p>
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="f-start">Start date</label>
+            <input type="date" id="f-start">
+            <p class="field__hint">The program is dated from the Monday of that week.</p>
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="f-objective">What you want to be able to do (optional)</label>
+            <textarea id="f-objective" placeholder="e.g. Write a weekly essay that brings in inbound client enquiries"></textarea>
+            <p class="field__hint">Carried through to the program as your stated objective. A concrete deliverable beats an adjective.</p>
+          </div>
+
+          <div class="btn-row" style="margin-top:2rem">
+            <button class="btn" type="submit">Generate the program</button>
+            <button class="btn btn--ghost" type="button" id="reset-form">Reset</button>
+          </div>
+          <p class="small muted" style="margin-top:1rem">
+            Generating replaces any program currently saved in this browser.
+          </p>
+        </form>
+
+        <aside class="sticky-aside">
+          <div class="card" id="preview">
+            <span class="eyebrow">Live feasibility</span>
+            <div id="preview-body"></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <!-- ----------------------------------------------------------- method -->
+  <section class="section">
+    <div class="wrap">
+      <div class="section__head">
+        <div class="section__num">03</div>
+        <div><h2>The five rules every program enforces</h2></div>
+      </div>
+      <div class="narrow rule-list">
+        <div class="rule-list__item">
+          <div class="rule-list__n">01</div>
+          <div class="rule-list__body">
+            <h4>Practice at the edge, not in the comfortable middle</h4>
+            <p>Sessions target a 50–85% success rate. Above that band you are performing; below it you are flailing. Difficulty is adjusted, not endured.</p>
+          </div>
+        </div>
+        <div class="rule-list__item">
+          <div class="rule-list__n">02</div>
+          <div class="rule-list__body">
+            <h4>Input is capped at a quarter of your time</h4>
+            <p>Reading, courses and videos are the most comfortable and least productive part of skill acquisition. Every program caps acquisition sessions and forces production.</p>
+          </div>
+        </div>
+        <div class="rule-list__item">
+          <div class="rule-list__n">03</div>
+          <div class="rule-list__body">
+            <h4>Every phase ends at a gate</h4>
+            <p>Gates have criteria another person could verify. You do not advance on time served; you advance on evidence.</p>
+          </div>
+        </div>
+        <div class="rule-list__item">
+          <div class="rule-list__n">04</div>
+          <div class="rule-list__body">
+            <h4>Feedback must come from outside your own head</h4>
+            <p>Each discipline names its arena — where real signal lives. Practice without an arena plateaus quickly and invisibly.</p>
+          </div>
+        </div>
+        <div class="rule-list__item">
+          <div class="rule-list__n">05</div>
+          <div class="rule-list__body">
+            <h4>Consolidation is scheduled, not earned</h4>
+            <p>Programs of ten weeks or more include reduced-load weeks. Recovery taken before it is needed prevents the collapse that ends most programs at week seven.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- --------------------------------------------------------- dispatch -->
+  <section class="section">
+    <div class="wrap">
+      <div class="section__head">
+        <div class="section__num">04</div>
+        <div>
+          <h2>The daily dispatch</h2>
+          <p class="lede" style="margin-top:1rem">
+            One passage each day from a tradition you choose — Stoicism, Taoism and Zen, strategy,
+            mastery, meaning, or wealth and leverage. Each comes with what it actually means, one
+            concrete practice for today, and an honest counterweight, because philosophy applied
+            without tension becomes a slogan.
+          </p>
+        </div>
+      </div>
+      <div id="dispatch-teaser"></div>
+      <div class="btn-row" style="margin-top:1.75rem">
+        <a class="btn" href="dispatch.html">Read today’s dispatch</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer__grid">
+      <div>
+        <a class="logo" href="index.html" style="font-size:1.05rem">Skill&nbsp;Trainer</a>
+        <p class="small" style="margin-top:0.75rem;max-width:40ch">
+          A planning instrument for deliberate practice. It does not sell outcomes; it schedules
+          work and makes progress checkable.
+        </p>
+      </div>
+      <div>
+        <span class="eyebrow">Site</span>
+        <a href="index.html#disciplines">Disciplines</a>
+        <a href="index.html#commission">Commission a program</a>
+        <a href="program.html">My program</a>
+        <a href="dispatch.html">Daily dispatch</a>
+        <a href="method.html">Method &amp; evidence</a>
+      </div>
+      <div>
+        <span class="eyebrow">Notes</span>
+        <p class="small" style="margin:0">
+          Hour estimates are informed approximations, not measurements of you. Financial and
+          physical training material is general education, not professional advice.
+        </p>
+      </div>
+    </div>
+    <div class="small" style="border-top:1px solid var(--rule);padding-top:1.25rem">
+      © <span data-year></span> Skill Trainer · Everything you enter stays in this browser.
+    </div>
+  </div>
+</footer>
+
+<script src="assets/js/data/disciplines.js"></script>
+<script src="assets/js/data/dispatch.js"></script>
+<script src="assets/js/engine.js"></script>
+<script src="assets/js/store.js"></script>
+<script src="assets/js/app.js"></script>
+<script src="assets/js/index.js"></script>
+</body>
+</html>
