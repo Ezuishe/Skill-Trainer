@@ -330,8 +330,24 @@
 
   function weekTemplate(phase, input) {
     var sessions = input.daysPerWeek;
-    var sessionHours = input.hoursPerWeek / sessions;
     var reserveReview = sessions >= 3 ? 1 : 0;
+
+    /* A weekly review is scoring, not practice. Giving it a full-length slot
+     * put people in front of a 108-minute "review the week" session, which
+     * nobody does. Cap it at half an hour and hand the rest to the sessions
+     * that are actually training.
+     *
+     * Allocation happens in whole minutes so the week sums to exactly the
+     * hours asked for, instead of drifting by a tenth per session. */
+    var weekMinutes = Math.round(input.hoursPerWeek * 60);
+    var reviewMinutes = reserveReview
+      ? Math.min(30, Math.floor(weekMinutes / sessions))
+      : 0;
+    var workCount = Math.max(1, sessions - reserveReview);
+    var workSplit = apportion(
+      new Array(workCount).fill(1),
+      Math.max(workCount, weekMinutes - reviewMinutes)
+    );
     var remaining = sessions - reserveReview;
     var counts = apportion(
       [phase.mix.acquire, phase.mix.drill, phase.mix.produce],
@@ -358,11 +374,14 @@
     }
     if (reserveReview) ordered.push('review');
 
+    var workIdx = 0;
     return ordered.map(function (type, i) {
+      var mins = type === 'review' ? reviewMinutes : workSplit[workIdx++];
       return {
         day: i + 1,
         type: SESSION_TYPES[type],
-        hours: round1(sessionHours)
+        minutes: mins,
+        hours: Math.round((mins / 60) * 100) / 100
       };
     });
   }
@@ -492,17 +511,23 @@
         var stageInfo = stageFor(phase, w);
         var sessions = weekTemplate(phase, input).map(function (s) {
           var work = sessionWork(discipline, phase, s, w, stageInfo, objective);
+          var isFirst = absolute === 1 && s.day === 1;
           return {
             day: s.day,
             date: addDays(weekStart, s.day - 1),
             type: s.type,
-            hours: isConsolidation ? round1(s.hours * 0.6) : s.hours,
+            minutes: isConsolidation ? Math.round(s.minutes * 0.6) : s.minutes,
+            hours: isConsolidation
+              ? Math.round((s.minutes * 0.6 / 60) * 100) / 100
+              : s.hours,
             title: work.title,
             detail: work.detail,
             steps: work.steps || null,
             check: work.check || null,
             drill: work.drill,
-            stage: stageInfo
+            stage: stageInfo,
+            first: isFirst,
+            plan: sessionPlan({ minutes: isConsolidation ? Math.round(s.minutes * 0.6) : s.minutes, type: s.type }, isFirst)
           };
         });
 
@@ -529,16 +554,51 @@
 
   /* ------------------------------------------------------------- session */
 
-  function dailyBlock(input) {
-    var minutes = Math.round((input.hoursPerWeek / input.daysPerWeek) * 60);
-    var parts = [
-      { name: 'Recall', share: 0.1, note: 'Write down what you remember from last session with your notes shut, then check.' },
-      { name: 'The hard part', share: 0.5, note: 'The drill or task at the edge of what you can do. You should be getting it wrong maybe a third of the time.' },
-      { name: 'Use it', share: 0.3, note: 'Apply it to real work today, where being wrong matters.' },
-      { name: 'Log', share: 0.1, note: 'Three lines: what you practised, what was hard, what you will change next time.' }
-    ];
-    return parts.map(function (p) {
-      return { name: p.name, minutes: Math.max(3, Math.round(minutes * p.share)), note: p.note };
+  /* The shape of a single session, in real minutes off that session's own
+   * length. Previously this was computed once for the whole plan, which meant
+   * a 30-minute review and a shortened consolidation session both displayed
+   * the full-length breakdown. Each session type has its own shape, and the
+   * very first session of a plan has no previous session to recall from. */
+  var SESSION_SHAPES = {
+    first: [
+      { name: 'Set up', share: 0.30, note: 'Get the tools from "Before week 1" in place. This is the session where that happens, so it does not eat every later one.' },
+      { name: 'Baseline', share: 0.45, note: 'Take the baseline measurement for this skill and write the numbers down with today\'s date. Without it you cannot tell in ten weeks whether any of this worked.' },
+      { name: 'Start', share: 0.15, note: 'Begin step 1 below. Getting part of the way in beats finishing nothing.' },
+      { name: 'Log', share: 0.10, note: 'Three lines: what you set up, what was awkward, what you will do first next session.' }
+    ],
+    acquire: [
+      { name: 'Recall', share: 0.10, note: 'Notes shut, write what you remember from last session. Then check what you missed.' },
+      { name: 'Take it in', share: 0.55, note: 'Work the steps below. When the time is up, stop, whether or not you finished the source.' },
+      { name: 'Put it to use', share: 0.25, note: 'Rewrite it in your own words or apply it to something real. Material you take in and never use is gone within days.' },
+      { name: 'Log', share: 0.10, note: 'Three lines: what you practised, what was hard, what changes next time.' }
+    ],
+    drill: [
+      { name: 'Warm up', share: 0.10, note: 'One easy rep, then read the "what usually goes wrong" note so you know what to watch for.' },
+      { name: 'Reps', share: 0.60, note: 'The drill at the dose given. Stop between reps and note what went wrong in that one.' },
+      { name: 'Check the output', share: 0.20, note: 'Watch, read or measure what you produced. A rep you never look back at is exercise, not practice.' },
+      { name: 'Log', share: 0.10, note: 'Three lines: what you practised, what was hard, what changes next time.' }
+    ],
+    produce: [
+      { name: 'Recall', share: 0.10, note: 'Notes shut, write the one thing you are trying to fix in this piece of work.' },
+      { name: 'Make it', share: 0.60, note: 'The steps below. Make the thing; resist going back to research it.' },
+      { name: 'Put it in front of someone', share: 0.20, note: 'Send it, publish it, or show it to a person. Work nobody sees teaches you very little.' },
+      { name: 'Log', share: 0.10, note: 'Three lines: what you made, what was hard, what changes next time.' }
+    ],
+    review: [
+      { name: 'Count', share: 0.20, note: 'Sessions done out of sessions planned, and hours logged. Numbers, not impressions.' },
+      { name: 'Score the gate', share: 0.35, note: 'Work through this phase\'s gate criteria. Yes or no on each, no partial credit.' },
+      { name: 'Name the weakness', share: 0.30, note: 'One specific sentence on what to fix next week, and which drill hits it.' },
+      { name: 'Write it up', share: 0.15, note: 'Add the entry to your log so next week has something to read back.' }
+    ]
+  };
+
+  function sessionPlan(session, isFirstOfPlan) {
+    var minutes = Math.max(4, session.minutes || Math.round(session.hours * 60));
+    var shape = SESSION_SHAPES[isFirstOfPlan ? 'first' : session.type.key] || SESSION_SHAPES.acquire;
+    /* Whole minutes, summing exactly to the session length. */
+    var split = apportion(shape.map(function (r) { return r.share; }), minutes);
+    return shape.map(function (r, i) {
+      return { name: r.name, minutes: split[i], note: r.note };
     });
   }
 
@@ -587,7 +647,7 @@
       scope: scope,
       phases: phases,
       schedule: schedule,
-      dailyBlock: dailyBlock(normalized)
+      sessionShapes: SESSION_SHAPES
     };
   }
 
@@ -643,11 +703,18 @@
       L.push('_' + p.setup.firstWeek + '_');
     }
     L.push('');
-    L.push('## The daily block (' + Math.round(p.sessionLength * 60) + ' minutes)');
+    L.push('## How a session is spent');
     L.push('');
-    p.dailyBlock.forEach(function (b) {
-      L.push('- **' + b.name + '** (' + b.minutes + ' min) — ' + b.note);
+    L.push('Each session below carries its own breakdown in real minutes. The shapes are:');
+    L.push('');
+    ['acquire', 'drill', 'produce', 'review'].forEach(function (k) {
+      L.push('- **' + k + '**: ' +
+        p.sessionShapes[k].map(function (r) {
+          return r.name + ' ' + Math.round(r.share * 100) + '%';
+        }).join(', '));
     });
+    L.push('');
+    L.push('Your first session replaces the recall step with setting up and taking your baseline.');
     L.push('');
     L.push('## Phases');
     p.phases.forEach(function (ph) {
@@ -686,6 +753,11 @@
         }
         if (s.steps) s.steps.forEach(function (st, i) { L.push('      ' + (i + 1) + '. ' + st); });
         if (s.check) L.push('      Done when: ' + s.check);
+        if (s.plan) {
+          L.push('      Time: ' + s.plan.map(function (r) {
+            return r.name + ' ' + r.minutes + 'm';
+          }).join(' · '));
+        }
       });
       if (w.gate) L.push('  - **GATE: ' + w.gate.name + '**');
       L.push('');
@@ -791,6 +863,7 @@
 
   window.Planner = {
     build: build,
+    sessionPlan: sessionPlan,
     toMarkdown: toMarkdown,
     toICS: toICS,
     levels: LEVELS,

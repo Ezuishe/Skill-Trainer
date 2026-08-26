@@ -148,6 +148,31 @@ function watch(page, label) {
   const creditSeg = await page.locator('.status .meter__credit').count();
   if (!creditSeg) problems.push('credited-hours segment missing from the bar');
 
+  // credits: the transcript must render as a record
+  const transcriptRows = await page.locator('.transcript tr').count();
+  const pills = await page.locator('.transcript .pill').count();
+  console.log('transcript rows:', transcriptRows, '| status pills:', pills);
+  if (transcriptRows < 2) problems.push('transcript table missing rows');
+  if (pills < 1) problems.push('transcript status pills missing');
+  const standing = await page.locator('.transcript__standing').innerText();
+  if (!/credits/i.test(standing)) problems.push('credit standing missing');
+
+  // the reported bug: the first session must not ask you to recall a previous one
+  const firstSessionText = await page.evaluate(() => {
+    const prog = window.Store.loadProgram();
+    const s = prog.schedule[0].sessions[0];
+    return { first: s.first, minutes: s.minutes,
+             plan: s.plan.map(r => r.minutes + ' ' + r.name + ': ' + r.note).join(' | '),
+             sum: s.plan.reduce((a, r) => a + r.minutes, 0) };
+  });
+  console.log('first session plan:', firstSessionText.plan.slice(0, 150));
+  if (/last session|previous session/i.test(firstSessionText.plan)) {
+    problems.push('first session still refers to a previous session');
+  }
+  if (firstSessionText.sum !== firstSessionText.minutes) {
+    problems.push(`first session time plan sums to ${firstSessionText.sum}, session is ${firstSessionText.minutes}`);
+  }
+
   // stages and mistakes should be present on the phase view
   const stageCount = await page.locator('.stage').count();
   const mistakeCount = await page.locator('.drill__mistake').count();
@@ -180,10 +205,10 @@ function watch(page, label) {
   if (checkedNow < 1) problems.push('gate criterion did not persist');
 
   // ticking a session must move the banked-hours bar, not just the session count
-  const bankedBefore = await page.locator('.status__now').innerText();
+  const bankedBefore = await page.locator('.status .status__now').first().innerText();
   await page.locator('.week .session input[type="checkbox"]').nth(1).check();
   await page.waitForTimeout(400);
-  const bankedAfter = await page.locator('.status__now').innerText();
+  const bankedAfter = await page.locator('.status .status__now').first().innerText();
   console.log('banked hours before/after logging a session:', bankedBefore, '->', bankedAfter);
   if (bankedBefore === bankedAfter && Number(bankedAfter) === 0) {
     problems.push('logging a session did not change banked hours');

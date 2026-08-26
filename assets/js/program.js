@@ -134,6 +134,12 @@
     ]));
 
     row.appendChild(el('div', { class: 'status__cell' }, [
+      el('span', { class: 'status__label', text: 'Credits' }),
+      el('span', { class: 'status__value', text: st.transcript.creditsEarned + '/' + st.transcript.creditsTotal }),
+      el('span', { class: 'tiny muted', text: st.transcript.modulesAwarded + ' of ' + st.transcript.modulesTotal + ' modules awarded' })
+    ]));
+
+    row.appendChild(el('div', { class: 'status__cell' }, [
       el('span', { class: 'status__label', text: 'Sessions' }),
       el('span', { class: 'status__value', text: st.totals.done + '/' + st.totals.sessions }),
       el('span', { class: 'tiny muted', text: st.totals.pct + '% of the plan' })
@@ -410,9 +416,12 @@
     }
 
     var block = el('div', { style: 'margin-top:1.75rem;border-top:1px solid var(--rule);padding-top:1.25rem' });
-    block.appendChild(el('span', { class: 'eyebrow', text: 'How to spend the session' }));
+    block.appendChild(el('span', {
+      class: 'eyebrow',
+      text: 'How to spend the ' + s.minutes + ' minutes' + (s.first ? ' · first session' : '')
+    }));
     var table = el('table', { class: 'table' });
-    program.dailyBlock.forEach(function (b) {
+    (s.plan || []).forEach(function (b) {
       table.appendChild(el('tr', {}, [
         el('td', { class: 'num table__dur', text: b.minutes + ' min' }),
         el('td', { class: 'table__key', text: b.name }),
@@ -667,6 +676,95 @@
     root.appendChild(sec);
   }
 
+  /* ----------------------------------------------------------- transcript */
+
+  function renderTranscript(root) {
+    var t = window.Stats.transcript(program, progress);
+    var sec = el('section', { class: 'section' });
+    var wrap = el('div', { class: 'wrap' });
+
+    wrap.appendChild(el('div', { class: 'section__head' }, [
+      el('div', { class: 'section__num', text: '04' }),
+      el('div', {}, [
+        el('h2', { text: 'Transcript' }),
+        el('p', {
+          class: 'lede', style: 'margin-top:1rem',
+          text: 'Each phase is a module worth credits equal to its practice hours. Credits build as ' +
+            'you log sessions, and the module is awarded in full when every gate criterion passes. ' +
+            'Hours are attendance; the award is evidence.'
+        })
+      ])
+    ]));
+
+    /* Standing */
+    var standing = el('div', { class: 'transcript__standing' }, [
+      el('div', {}, [
+        el('span', { class: 'eyebrow', style: 'margin-bottom:0.3rem', text: 'Credits earned' }),
+        el('div', { class: 'status__figure' }, [
+          el('span', { class: 'status__now', text: String(t.creditsEarned) }),
+          el('span', { class: 'status__of', text: ' of ' + t.creditsTotal })
+        ])
+      ]),
+      el('div', {}, [
+        el('span', { class: 'eyebrow', style: 'margin-bottom:0.3rem', text: 'Modules awarded' }),
+        el('div', { class: 'status__figure' }, [
+          el('span', { class: 'status__now', text: String(t.modulesAwarded) }),
+          el('span', { class: 'status__of', text: ' of ' + t.modulesTotal })
+        ])
+      ]),
+      el('div', { style: 'flex:1;min-width:12rem' }, [
+        el('span', { class: 'eyebrow', style: 'margin-bottom:0.5rem', text: 'Toward the full plan' }),
+        el('div', { class: 'meter meter--lg' }, [
+          el('div', { class: 'meter__fill', style: 'width:' + t.creditsPct + '%' })
+        ]),
+        el('p', { class: 'tiny muted', style: 'margin:0.5rem 0 0', text: t.creditsPct + '% of the credits on this plan' })
+      ])
+    ]);
+    wrap.appendChild(standing);
+
+    /* The record itself */
+    var table = el('table', { class: 'table transcript', style: 'margin-top:2rem' });
+    table.appendChild(el('tr', {}, [
+      el('th', { text: 'Code' }),
+      el('th', { text: 'Module' }),
+      el('th', { text: 'Weeks' }),
+      el('th', { text: 'Sessions' }),
+      el('th', { text: 'Gate' }),
+      el('th', { text: 'Credits' }),
+      el('th', { text: 'Status' })
+    ]));
+    t.modules.forEach(function (m) {
+      table.appendChild(el('tr', { 'data-status': m.awarded ? 'awarded' : m.status.toLowerCase().replace(' ', '-') }, [
+        el('td', { class: 'num transcript__code', text: m.code }),
+        el('td', {}, [
+          el('div', { style: 'font-weight:500', text: m.title }),
+          el('div', { class: 'tiny muted', text: m.objective })
+        ]),
+        el('td', { class: 'num', text: m.weeks }),
+        el('td', { class: 'num', text: m.sessionsDone + '/' + m.sessions }),
+        el('td', { class: 'num', text: m.criteriaPassed + '/' + m.criteria }),
+        el('td', { class: 'num transcript__credits', text: m.earned + '/' + m.credits }),
+        el('td', {}, [el('span', { class: 'pill pill--' + (m.awarded ? 'awarded' : (m.sessionsDone ? 'open' : 'idle')), text: m.status })])
+      ]));
+    });
+    wrap.appendChild(el('div', { class: 'transcript-scroll' }, [table]));
+
+    if (t.current) {
+      wrap.appendChild(el('p', { class: 'small muted', style: 'margin-top:1.25rem' }, [
+        document.createTextNode('Currently reading ' + t.current.code + ' ' + t.current.title + '. '),
+        el('span', {
+          text: t.current.criteria - t.current.criteriaPassed === 0
+            ? 'All criteria passed; tick the last one to take the credits.'
+            : (t.current.criteria - t.current.criteriaPassed) +
+              ' gate criteria left to award its ' + t.current.credits + ' credits.'
+        })
+      ]));
+    }
+
+    sec.appendChild(wrap);
+    root.appendChild(sec);
+  }
+
   /* ------------------------------------------------------------ schedule */
 
   function renderSchedule(root) {
@@ -675,7 +773,7 @@
     var now = new Date();
 
     wrap.appendChild(el('div', { class: 'section__head' }, [
-      el('div', { class: 'section__num', text: '04' }),
+      el('div', { class: 'section__num', text: '05' }),
       el('div', {}, [
         el('h2', { text: 'Week by week' }),
         el('p', {
@@ -797,7 +895,7 @@
     var wrap = el('div', { class: 'wrap' });
 
     wrap.appendChild(el('div', { class: 'section__head' }, [
-      el('div', { class: 'section__num', text: '05' }),
+      el('div', { class: 'section__num', text: '06' }),
       el('div', {}, [el('h2', { text: 'Reference' })])
     ]));
 
@@ -869,7 +967,7 @@
     var wrap = el('div', { class: 'wrap' });
 
     wrap.appendChild(el('div', { class: 'section__head' }, [
-      el('div', { class: 'section__num', text: '06' }),
+      el('div', { class: 'section__num', text: '07' }),
       el('div', {}, [
         el('h2', { text: 'Session log' }),
         el('p', {
@@ -986,6 +1084,7 @@
     renderToday(root);
     renderVerdict(root);
     renderPhases(root);
+    renderTranscript(root);
     renderSchedule(root);
     renderReference(root);
     renderLog(root);

@@ -226,6 +226,89 @@
     return { earned: out.slice(-6), next: upcoming };
   }
 
+  /* ------------------------------------------------------------- transcript */
+
+  /* A university-style record. Each phase is a module worth credits equal to
+   * its scheduled practice hours. You accumulate credits by logging sessions
+   * in that module, and the module is only *awarded* once every gate criterion
+   * passes. That keeps the two honest and separate: hours are attendance,
+   * the award is evidence you can do the thing.
+   */
+  function moduleCode(discipline, index) {
+    var letters = discipline.name
+      .replace(/[^A-Za-z ]/g, '')
+      .split(' ')
+      .filter(Boolean)
+      .map(function (w) { return w[0]; })
+      .join('')
+      .toUpperCase();
+    if (letters.length < 3) letters = discipline.name.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase();
+    return letters.slice(0, 3) + '-' + String(index).padStart(2, '0');
+  }
+
+  function transcript(program, progress) {
+    var modules = program.phases.map(function (ph) {
+      var creditsTotal = Math.max(1, Math.round(ph.hours));
+
+      var sessions = 0, done = 0, minutesDone = 0;
+      program.schedule.forEach(function (w) {
+        if (w.phase.index !== ph.index) return;
+        w.sessions.forEach(function (sn) {
+          sessions++;
+          if (progress.sessions['w' + w.number + 'd' + sn.day]) {
+            done++;
+            minutesDone += (sn.minutes || Math.round(sn.hours * 60));
+          }
+        });
+      });
+
+      var criteria = ph.milestone.criteria.length;
+      var passed = 0;
+      ph.milestone.criteria.forEach(function (_, i) {
+        if (progress.gates['p' + ph.index + 'c' + i]) passed++;
+      });
+      var awarded = criteria > 0 && passed === criteria;
+
+      /* Credits accrue with logged work while the module is open, and the
+       * full value lands when the gate passes. Hours alone never complete a
+       * module, and passing the gate is what actually completes it. */
+      var earned = awarded
+        ? creditsTotal
+        : Math.min(creditsTotal - 1, Math.round(minutesDone / 60));
+
+      return {
+        code: moduleCode(program.discipline, ph.index),
+        index: ph.index,
+        title: ph.name,
+        objective: ph.objective,
+        credits: creditsTotal,
+        earned: earned,
+        sessions: sessions,
+        sessionsDone: done,
+        criteria: criteria,
+        criteriaPassed: passed,
+        awarded: awarded,
+        status: awarded ? 'Awarded' : (done > 0 ? 'In progress' : 'Not started'),
+        weeks: ph.weekStart + '\u2013' + ph.weekEnd
+      };
+    });
+
+    var creditsTotal = modules.reduce(function (a, m) { return a + m.credits; }, 0);
+    var creditsEarned = modules.reduce(function (a, m) { return a + m.earned; }, 0);
+    var awarded = modules.filter(function (m) { return m.awarded; }).length;
+
+    return {
+      modules: modules,
+      creditsTotal: creditsTotal,
+      creditsEarned: creditsEarned,
+      creditsPct: creditsTotal ? Math.round((creditsEarned / creditsTotal) * 100) : 0,
+      modulesAwarded: awarded,
+      modulesTotal: modules.length,
+      /* The module you are in now, so the transcript can point somewhere. */
+      current: modules.filter(function (m) { return !m.awarded; })[0] || null
+    };
+  }
+
   /* ------------------------------------------------------------------ build */
 
   function build(program, progress, now) {
@@ -264,12 +347,14 @@
       week: w,
       streak: s,
       momentum: momentum(program, progress, now, s, w),
-      markers: markers(program, progress, l, w, s, totals)
+      markers: markers(program, progress, l, w, s, totals),
+      transcript: transcript(program, progress)
     };
   }
 
   window.Stats = {
     build: build,
+    transcript: transcript,
     ladder: ladder,
     thisWeek: thisWeek,
     streak: streak,

@@ -186,6 +186,125 @@ var huge = Planner.build({ disciplineId: 'learning-velocity', weeks: 156, hoursP
 check('huge program reaches elite', huge.verdict.reachedKey === 'elite', String(huge.verdict.reachedKey));
 check('elite has no next lever', huge.verdict.levers.length === 0);
 
+/* --- session time plans (the reported bugs) ---------------------------- */
+
+DISCIPLINES.forEach(function (d) {
+  [[7, 4], [5, 3], [12, 5], [3, 7], [1, 1]].forEach(function (cfg) {
+    var pp = Planner.build({
+      disciplineId: d.id, weeks: 14, hoursPerWeek: cfg[0], daysPerWeek: cfg[1],
+      level: 'novice', startDate: '2026-08-24'
+    });
+
+    /* The week must sum to exactly the hours asked for, in whole minutes. */
+    pp.schedule.filter(function (w) { return !w.consolidation; }).forEach(function (w) {
+      var mins = w.sessions.reduce(function (a, sn) { return a + sn.minutes; }, 0);
+      check('week sums to the budget ' + d.id + ' ' + cfg.join('/'),
+        mins === Math.round(cfg[0] * 60), mins + ' vs ' + Math.round(cfg[0] * 60));
+    });
+
+    pp.schedule.forEach(function (w) {
+      w.sessions.forEach(function (sn) {
+        check('session has a time plan', sn.plan && sn.plan.length === 4);
+        var sum = sn.plan.reduce(function (a, r) { return a + r.minutes; }, 0);
+        check('time plan sums to the session ' + d.id,
+          sum === sn.minutes, sum + ' vs ' + sn.minutes);
+        sn.plan.forEach(function (r) {
+          check('no zero-length block', r.minutes >= 1, String(r.minutes));
+        });
+        check('session minutes are positive', sn.minutes >= 1, String(sn.minutes));
+
+        /* A review is scoring, not a practice block. */
+        if (sn.type.key === 'review' && cfg[1] >= 3) {
+          check('review capped at 30 min', sn.minutes <= 30, String(sn.minutes));
+          check('review plan is review-shaped',
+            /Count/.test(sn.plan[0].name), sn.plan[0].name);
+        }
+      });
+    });
+
+    /* The very first session cannot ask you to recall a previous one. */
+    var firstSession = pp.schedule[0].sessions[0];
+    check('first session is flagged ' + d.id, firstSession.first === true);
+    var firstText = firstSession.plan.map(function (r) { return r.name + ' ' + r.note; }).join(' ');
+    check('first session does not reference a previous session',
+      !/last session|previous session/i.test(firstText), firstText.slice(0, 60));
+    check('first session sets up and takes a baseline',
+      /Set up/.test(firstText) && /Baseline/.test(firstText));
+
+    /* Every later session may reference the previous one. */
+    var second = pp.schedule[0].sessions[1] || pp.schedule[1].sessions[0];
+    check('later sessions are not flagged first', second.first !== true);
+
+    /* A consolidation week's plan must match its shortened session. */
+    var cons = pp.schedule.filter(function (w) { return w.consolidation; })[0];
+    if (cons) {
+      var cs = cons.sessions[0];
+      var csum = cs.plan.reduce(function (a, r) { return a + r.minutes; }, 0);
+      check('consolidation plan matches the shortened session',
+        csum === cs.minutes, csum + ' vs ' + cs.minutes);
+      check('consolidation session really is shorter',
+        cs.minutes < pp.schedule[0].sessions[0].minutes ||
+        cs.type.key === 'review');
+    }
+  });
+});
+
+/* --- credits and transcript -------------------------------------------- */
+
+var tp = Planner.build({
+  disciplineId: 'speaking-presence', weeks: 12, hoursPerWeek: 7, daysPerWeek: 4,
+  level: 'novice', startDate: '2026-08-24'
+});
+var tpr = { id: tp.id, sessions: {}, gates: {}, logs: [], hours: 0 };
+
+var t0 = Stats.transcript(tp, tpr);
+check('transcript has one module per phase', t0.modules.length === tp.phases.length);
+check('no credits before any work', t0.creditsEarned === 0, String(t0.creditsEarned));
+check('no modules awarded at the start', t0.modulesAwarded === 0);
+check('module codes look like codes', /^[A-Z]{3}-\d{2}$/.test(t0.modules[0].code), t0.modules[0].code);
+check('every module is worth at least one credit',
+  t0.modules.every(function (m) { return m.credits >= 1; }));
+check('credits total matches the plan hours roughly',
+  Math.abs(t0.creditsTotal - tp.totalHours) <= tp.phases.length,
+  t0.creditsTotal + ' vs ' + tp.totalHours);
+check('current module points at the first one', t0.current && t0.current.index === 1);
+
+/* Log every session of module 1 but do not pass the gate. */
+tp.schedule.forEach(function (w) {
+  if (w.phase.index !== 1) return;
+  w.sessions.forEach(function (sn) { tpr.sessions['w' + w.number + 'd' + sn.day] = '2026-09-01'; });
+});
+var t1 = Stats.transcript(tp, tpr);
+check('hours alone do not award a module', t1.modules[0].awarded === false);
+check('hours alone do not grant full credits',
+  t1.modules[0].earned < t1.modules[0].credits,
+  t1.modules[0].earned + '/' + t1.modules[0].credits);
+check('but credits did accrue', t1.modules[0].earned > 0, String(t1.modules[0].earned));
+check('status is in progress', t1.modules[0].status === 'In progress', t1.modules[0].status);
+
+/* Now pass the gate. */
+tp.phases[0].milestone.criteria.forEach(function (_, i) { tpr.gates['p1c' + i] = '2026-09-05'; });
+var t2 = Stats.transcript(tp, tpr);
+check('passing the gate awards the module', t2.modules[0].awarded === true);
+check('an awarded module grants its full credits',
+  t2.modules[0].earned === t2.modules[0].credits,
+  t2.modules[0].earned + '/' + t2.modules[0].credits);
+check('awarding increases total credits', t2.creditsEarned > t1.creditsEarned);
+check('modules awarded counts up', t2.modulesAwarded === 1);
+check('current module moves to the next one', t2.current && t2.current.index === 2);
+check('credits never exceed the total', t2.creditsEarned <= t2.creditsTotal);
+
+/* Transcript must hold up for every discipline. */
+DISCIPLINES.forEach(function (d) {
+  var pr = Planner.build({
+    disciplineId: d.id, weeks: 6, hoursPerWeek: 4, daysPerWeek: 3,
+    level: 'novice', startDate: '2026-08-24'
+  });
+  var tr = Stats.transcript(pr, { id: pr.id, sessions: {}, gates: {}, logs: [], hours: 0 });
+  check(d.id + ' transcript builds', tr.modules.length >= 1);
+  check(d.id + ' credit percentages bounded', tr.creditsPct >= 0 && tr.creditsPct <= 100);
+});
+
 /* --- retention stats --------------------------------------------------- */
 
 function blankProgress(id) { return { id: id, sessions: {}, gates: {}, logs: [], hours: 0 }; }

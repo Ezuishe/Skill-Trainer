@@ -1083,7 +1083,7 @@ input[type='range']::-moz-range-thumb {
 
 .status__row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
   gap: 1px;
   background: var(--rule);
   border: 1px solid var(--rule);
@@ -1148,6 +1148,46 @@ input[type='range']::-moz-range-thumb {
 }
 
 .marker--next::before { content: '\00a0'; }
+
+/* ------------------------------------------------------------- transcript */
+
+.transcript__standing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s6);
+  align-items: flex-end;
+  border: 1px solid var(--rule-strong);
+  border-left: 3px solid var(--accent);
+  background: var(--surface);
+  padding: var(--s5);
+}
+
+.transcript th { white-space: nowrap; }
+.transcript__code { color: var(--accent); letter-spacing: 0.04em; }
+.transcript__credits { font-weight: 600; }
+.transcript tr[data-status='awarded'] .transcript__credits { color: var(--positive); }
+.transcript tr[data-status='not-started'] td { color: var(--ink-3); }
+
+.pill {
+  display: inline-block;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.5rem;
+  border-radius: 2px;
+  border: 1px solid var(--rule-strong);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.pill--awarded { border-color: var(--positive); color: var(--positive); }
+.pill--open { border-color: var(--accent); color: var(--accent); }
+
+@media (max-width: 760px) {
+  /* The transcript is a record, so let it scroll rather than crush the columns. */
+  .transcript { min-width: 34rem; }
+  .transcript-scroll { overflow-x: auto; }
+}
 
 /* ------------------------------------------------------------ resume card */
 

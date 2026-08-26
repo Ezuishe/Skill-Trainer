@@ -49,6 +49,37 @@ Every pillar carries:
 - **study / make** (in `data/sessions-*.js`) — the actual step-by-step work for
   acquire and produce sessions, each `make` ending in a "done when" test
 
+## Credits and the transcript
+
+Each phase is a **module** worth credits equal to its practice hours, with a code
+(`SPK-01`). Credits build as you log sessions and the module is **awarded in
+full** when every gate criterion passes. Hours are attendance; the award is
+evidence, and hours alone never complete a module.
+
+The transcript lists every module with weeks, sessions done, gate progress,
+credits and status, plus your standing: credits earned of the total and modules
+awarded of the total.
+
+## How a session is spent
+
+Each session carries its own breakdown in real minutes, computed from that
+session's own length rather than once for the whole plan. Four shapes:
+
+| Type | Shape |
+|---|---|
+| Acquire | Recall 10% · Take it in 55% · Put it to use 25% · Log 10% |
+| Drill | Warm up 10% · Reps 60% · Check the output 20% · Log 10% |
+| Produce | Recall 10% · Make it 60% · Show someone 20% · Log 10% |
+| Review | Count 20% · Score the gate 35% · Name the weakness 30% · Write it up 15% |
+
+The **first session of a plan** replaces the recall step with setting up and
+taking your baseline, because there is no previous session to recall from.
+
+Weekly reviews are capped at 30 minutes and the freed time goes to the sessions
+that are actually training. Everything is allocated in whole minutes, so a week
+sums to exactly the hours you asked for and each session's breakdown sums to
+exactly that session.
+
 ## Coming back
 
 A plan you read once is a plan you abandon. The program page opens on a status
