@@ -6,7 +6,10 @@ global.window = global;
 var path = require('path');
 var root = path.join(__dirname, '..', 'assets', 'js');
 ['disciplines-01-communication.js', 'disciplines-02-influence.js',
-  'disciplines-03-building.js', 'disciplines-04-foundation.js']
+  'disciplines-03-building.js', 'disciplines-04-foundation.js',
+  'sessions-01-communication.js', 'sessions-02-influence.js',
+  'sessions-03-building.js', 'sessions-04-foundation.js',
+  'setup.js']
   .forEach(function (f) { require(path.join(root, 'data', f)); });
 require(path.join(root, 'data', 'dispatch.js'));
 require(path.join(root, 'engine.js'));
@@ -52,6 +55,47 @@ DISCIPLINES.forEach(function (d) {
   ['metrics', 'failureModes', 'arena', 'library'].forEach(function (k) {
     check(d.id + ' has ' + k, Array.isArray(d[k]) && d[k].length >= 3);
   });
+
+  /* Every pillar must have authored acquire and produce work. Without it the
+     session is only a topic label, which is the thing that made plans vague. */
+  d.pillars.forEach(function (p) {
+    var key = d.id + '/' + p.id;
+    var sess = PILLAR_SESSIONS[key];
+    check(key + ' has authored sessions', !!sess);
+    if (!sess) return;
+    check(key + ' has >=2 study tasks', sess.study && sess.study.length >= 2);
+    check(key + ' has >=2 make tasks', sess.make && sess.make.length >= 2);
+    (sess.study || []).concat(sess.make || []).forEach(function (item) {
+      check(key + '/' + item.task + ' has a task name', !!item.task && item.task.length > 8);
+      check(key + '/' + item.task + ' has >=3 steps', item.steps && item.steps.length >= 3,
+        item.steps ? String(item.steps.length) : 'none');
+      (item.steps || []).forEach(function (st) {
+        /* Terse is fine ("Redraw it."); vague or unpunctuated is not. */
+        check(key + ' step is a written instruction',
+          st.length > 9 && /[.?]["']?$/.test(st) && /^[A-Z]/.test(st), st.slice(0, 45));
+      });
+    });
+    (sess.make || []).forEach(function (m) {
+      check(key + '/' + m.task + ' has a check', !!m.check && m.check.length > 15);
+    });
+  });
+
+  /* Getting started. */
+  var setup = DISCIPLINE_SETUP[d.id];
+  check(d.id + ' has setup', !!setup);
+  if (setup) {
+    check(d.id + ' setup tools', setup.tools && setup.tools.length >= 2);
+    check(d.id + ' setup arena', !!setup.arena && setup.arena.length > 30);
+    check(d.id + ' setup baseline', setup.baseline && setup.baseline.length >= 3);
+    check(d.id + ' setup firstWeek', !!setup.firstWeek && setup.firstWeek.length > 30);
+  }
+});
+
+/* Nothing authored for a pillar that does not exist. */
+var validKeys = {};
+DISCIPLINES.forEach(function (d) { d.pillars.forEach(function (p) { validKeys[d.id + '/' + p.id] = 1; }); });
+Object.keys(PILLAR_SESSIONS).forEach(function (k) {
+  check('session key ' + k + ' matches a real pillar', !!validKeys[k]);
 });
 
 DISPATCH_TRACKS.forEach(function (t) {
@@ -88,6 +132,9 @@ DISCIPLINES.forEach(function (d) {
               w.sessions.length + ' vs ' + p.input.daysPerWeek);
             w.sessions.forEach(function (s) {
               check('session has title', typeof s.title === 'string' && s.title.length > 0);
+              check('EVERY session has concrete instructions',
+                (s.steps && s.steps.length >= 3) || !!s.drill,
+                s.type.key + ': ' + s.title.slice(0, 50));
               check('drill sessions carry a drill', s.type.key !== 'drill' || !!s.drill);
               check('non-drill sessions carry no drill', s.type.key === 'drill' || !s.drill);
               check('session title is not the drill dose repeated',
@@ -96,6 +143,7 @@ DISCIPLINES.forEach(function (d) {
               check('session date valid', s.date instanceof Date && !isNaN(s.date));
             });
           });
+          check('plan carries setup ' + d.id, !!p.setup && !!p.setup.baseline);
           check('verdict statement ' + d.id, !!p.verdict.statement);
           check('verdict owns ' + d.id, !!p.verdict.owns);
           check('gates == phases', p.phases.length ===
@@ -103,6 +151,8 @@ DISCIPLINES.forEach(function (d) {
           var md = Planner.toMarkdown(p);
           check('markdown non-trivial', md.length > 1500, String(md.length));
           check('markdown no undefined', md.indexOf('undefined') === -1);
+          check('markdown has the setup section', md.indexOf('## Before week 1') !== -1);
+          check('markdown has numbered steps', /\n      1\. /.test(md));
           var ics = Planner.toICS(p);
           check('ics wrapped', /^BEGIN:VCALENDAR/.test(ics) && /END:VCALENDAR$/.test(ics));
           check('ics no undefined', ics.indexOf('undefined') === -1);

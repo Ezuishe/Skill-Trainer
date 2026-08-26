@@ -757,6 +757,55 @@ input[type='range']::-moz-range-thumb {
 }
 .drill__protocol { font-size: 0.86rem; color: var(--ink-2); margin: 0; line-height: 1.5; }
 
+/* Numbered session steps. The list is the instruction, so it gets room. */
+.steps {
+  list-style: none;
+  counter-reset: step;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.steps li {
+  counter-increment: step;
+  position: relative;
+  padding-left: 2rem;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+.steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 0.05rem;
+  width: 1.35rem;
+  height: 1.35rem;
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--accent);
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+}
+
+.steps__check {
+  margin: 0.75rem 0 0;
+  padding-left: 2rem;
+  font-size: 0.82rem;
+  color: var(--positive);
+  font-weight: 500;
+}
+
+/* In the dense week list the steps sit tighter. */
+.session .steps { margin-top: 0.5rem; gap: 0.35rem; }
+.session .steps li { font-size: 0.82rem; padding-left: 1.6rem; }
+.session .steps li::before { width: 1.1rem; height: 1.1rem; font-size: 0.62rem; }
+.session .steps__check { padding-left: 1.6rem; font-size: 0.78rem; }
+
 .drill__mistake {
   font-size: 0.82rem;
   color: var(--ink-3);

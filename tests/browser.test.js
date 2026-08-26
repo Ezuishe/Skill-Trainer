@@ -123,6 +123,14 @@ function watch(page, label) {
     if (occurrences > 1) problems.push(`session card repeats "${heading}" ${occurrences} times`);
   }
 
+  // the vagueness fix: sessions must carry numbered steps, and setup must exist
+  const stepLists = await page.locator('.steps').count();
+  const stepItems = await page.locator('.steps li').count();
+  console.log('step lists rendered:', stepLists, '| individual steps:', stepItems);
+  if (stepItems < 50) problems.push(`expected many numbered steps, got ${stepItems}`);
+  const setupSection = await page.locator('h2:has-text("Before week 1")').count();
+  if (!setupSection) problems.push('Before week 1 section missing');
+
   // stages and mistakes should be present on the phase view
   const stageCount = await page.locator('.stage').count();
   const mistakeCount = await page.locator('.drill__mistake').count();
@@ -165,22 +173,14 @@ function watch(page, label) {
   // schedule screenshot
   await page.locator('button:has-text("Expand all")').first().click();
   await page.waitForTimeout(300);
-  const weekBox = await page.locator('.week').nth(1).boundingBox();
-  if (weekBox) {
-    await page.screenshot({
-      path: `${OUT}/04-schedule.png`,
-      clip: { x: 0, y: Math.max(0, weekBox.y - 200), width: 1440, height: 950 }
-    });
-  }
+  await page.locator('.week').nth(1).scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${OUT}/04-schedule.png` });
 
   // verdict section screenshot
-  const verdictBox = await page.locator('.verdict').boundingBox();
-  if (verdictBox) {
-    await page.screenshot({
-      path: `${OUT}/05-verdict.png`,
-      clip: { x: 0, y: Math.max(0, verdictBox.y - 120), width: 1440, height: 900 }
-    });
-  }
+  await page.locator('.verdict').scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${OUT}/05-verdict.png` });
 
   // exports actually produce files
   const [dl] = await Promise.all([

@@ -291,6 +291,7 @@
         startDate: start,
         endDate: end,
         mix: mix,
+        pillarId: w.pillar.id,
         competencies: w.pillar.competencies,
         stages: w.pillar.stages || [],
         standard: w.pillar.standard || '',
@@ -375,60 +376,101 @@
     return { index: idx, total: stages.length, stage: stages[idx] };
   }
 
-  /* What a single session is for. Returns a title and a supporting line; the
-   * drill object travels separately so the renderer never prints the same
-   * sentence twice. */
-  function sessionWork(phase, session, weekInPhase, stageInfo, objective) {
+  /* The step-by-step work, authored per pillar. Without this an acquire or
+   * produce session is only a topic label, which is not something anyone can
+   * sit down and do. */
+  function pillarSessions(discipline, phase) {
+    var table = window.PILLAR_SESSIONS || {};
+    return table[discipline.id + '/' + phase.pillarId] || null;
+  }
+
+  /* The weekly review is the same procedure every time, so it is written once
+   * here rather than repeated in every pillar. */
+  function reviewSteps(phase, stage, discipline) {
+    var metric = (discipline.metrics && discipline.metrics[0]) || null;
+    return [
+      'Count it: sessions completed this week out of sessions planned. Write the number, not an impression.',
+      metric
+        ? 'Update your measure. ' + metric.name + ': ' + metric.method
+        : 'Update whatever number you are tracking for this skill.',
+      'Closed book, write what you can still do from this phase that you could not at the start.',
+      stage && stage.check
+        ? 'Check yourself against this stage: ' + stage.check + ' Yes or no, no partial credit.'
+        : 'Check yourself against the gate criteria for this phase. Yes or no.',
+      'Name next week\'s single weakness in one specific sentence, and pick which drill hits it.',
+      'If nothing improved for two weeks running, change one variable: difficulty, feedback source, or drill design. Not all three.'
+    ];
+  }
+
+  /* What a single session is for. Returns a title, optional supporting line,
+   * and the concrete steps. The drill object travels separately so the
+   * renderer never prints the same sentence twice. */
+  function sessionWork(discipline, phase, session, weekInPhase, stageInfo, objective) {
     var drills = phase.drills || [];
     var comps = phase.competencies || [];
     var crit = (phase.milestone && phase.milestone.criteria) || [];
     var stage = stageInfo && stageInfo.stage;
     var seed = weekInPhase + session.day;
+    var authored = pillarSessions(discipline, phase);
 
     switch (session.type.key) {
-      case 'acquire':
-        /* The stage text is already shown at week level, so this line says
-           something the reader has not just read. */
+      case 'acquire': {
+        var study = authored && authored.study && authored.study.length
+          ? authored.study[seed % authored.study.length]
+          : null;
+        if (study) {
+          return { title: study.task, detail: null, steps: study.steps, drill: null };
+        }
         return {
           title: comps.length ? comps[seed % comps.length] : phase.objective,
-          detail: 'Take in only what serves this, then stop and use it. If you are still reading ' +
-            'at the halfway point, you have overrun.',
+          detail: 'Take in only what serves this, then stop and use it.',
+          steps: null,
           drill: null
         };
+      }
 
-      case 'drill':
+      case 'drill': {
         var drill = drills.length ? drills[seed % drills.length] : null;
         return {
           title: drill ? drill.name : 'Work your weakest component',
           detail: null,
+          steps: null,
           drill: drill
         };
+      }
 
       case 'produce': {
-        /* Alternate between the gate criteria and the thing the user actually
-         * said they wanted, so the programme keeps pointing at their goal. */
+        var make = authored && authored.make && authored.make.length
+          ? authored.make[weekInPhase % authored.make.length]
+          : null;
+
+        /* Every other produce session points at what the user actually said
+         * they wanted, using the authored steps as the method. */
         var useObjective = objective && (weekInPhase % 2 === 1);
-        if (useObjective) {
+        if (make) {
           return {
-            title: 'Your objective: ' + objective,
-            detail: 'Use this phase (' + phase.name.toLowerCase() + ') on it directly. ' +
-              'Produce something you could show someone.',
+            title: make.task,
+            detail: useObjective
+              ? 'Do this on your own goal: ' + objective
+              : null,
+            steps: make.steps,
+            check: make.check,
             drill: null
           };
         }
         return {
           title: crit.length ? crit[weekInPhase % crit.length] : 'Make something real with this pillar',
-          detail: 'Make the thing itself, not notes about it. Someone else should be able to look at it when you are done.',
+          detail: 'Make the thing itself, not notes about it.',
+          steps: null,
           drill: null
         };
       }
 
       default:
         return {
-          title: 'Score the week and pick next week’s weakness',
-          detail: stage && stage.check
-            ? 'Against this stage: ' + stage.check
-            : 'Check yourself against the gate criteria for this phase.',
+          title: 'Score the week and pick next week\'s weakness',
+          detail: null,
+          steps: reviewSteps(phase, stage, discipline),
           drill: null
         };
     }
@@ -449,7 +491,7 @@
           consolidationEvery && absolute % consolidationEvery === 0 && absolute !== input.weeks;
         var stageInfo = stageFor(phase, w);
         var sessions = weekTemplate(phase, input).map(function (s) {
-          var work = sessionWork(phase, s, w, stageInfo, objective);
+          var work = sessionWork(discipline, phase, s, w, stageInfo, objective);
           return {
             day: s.day,
             date: addDays(weekStart, s.day - 1),
@@ -457,6 +499,8 @@
             hours: isConsolidation ? round1(s.hours * 0.6) : s.hours,
             title: work.title,
             detail: work.detail,
+            steps: work.steps || null,
+            check: work.check || null,
             drill: work.drill,
             stage: stageInfo
           };
@@ -538,6 +582,7 @@
       sessionLength: round1(hoursPerWeek / daysPerWeek),
       startDate: startDate,
       endDate: addDays(startDate, weeks * 7 - 1),
+      setup: (window.DISCIPLINE_SETUP || {})[discipline.id] || null,
       verdict: verdict,
       scope: scope,
       phases: phases,
@@ -583,6 +628,20 @@
       L.push('These hours do not stretch to the full discipline. Deliberately excluded:');
       p.scope.dropped.forEach(function (d) { L.push('- ' + d.name + ' — ' + d.objective); });
     }
+    if (p.setup) {
+      L.push('');
+      L.push('## Before week 1');
+      L.push('');
+      L.push('**What you need**');
+      p.setup.tools.forEach(function (t) { L.push('- ' + t); });
+      L.push('');
+      L.push('**Where the feedback comes from.** ' + p.setup.arena);
+      L.push('');
+      L.push('**Measure your baseline now**');
+      p.setup.baseline.forEach(function (b, i) { L.push((i + 1) + '. ' + b); });
+      L.push('');
+      L.push('_' + p.setup.firstWeek + '_');
+    }
     L.push('');
     L.push('## The daily block (' + Math.round(p.sessionLength * 60) + ' minutes)');
     L.push('');
@@ -619,8 +678,14 @@
         w.theme + ' · ' + w.hours + ' h');
       w.sessions.forEach(function (s) {
         L.push('  - ' + fmtShort(s.date) + ' · ' + s.type.label + ' (' + s.hours + ' h): ' + s.title);
-        if (s.drill) L.push('      ' + s.drill.dose + ' — ' + s.drill.protocol);
-        else if (s.detail) L.push('      ' + s.detail);
+        if (s.detail) L.push('      ' + s.detail);
+        if (s.drill) {
+          L.push('      Dose: ' + s.drill.dose);
+          L.push('      ' + s.drill.protocol);
+          L.push('      Goes wrong: ' + s.drill.mistake);
+        }
+        if (s.steps) s.steps.forEach(function (st, i) { L.push('      ' + (i + 1) + '. ' + st); });
+        if (s.check) L.push('      Done when: ' + s.check);
       });
       if (w.gate) L.push('  - **GATE: ' + w.gate.name + '**');
       L.push('');
@@ -682,11 +747,17 @@
     p.schedule.forEach(function (w) {
       w.sessions.forEach(function (s) {
         var uid = p.id + '-w' + w.number + 'd' + s.day + '@skill-trainer';
-        var desc = s.title + '\n\n' + s.type.note +
+        var desc = s.title +
+          (s.detail ? '\n\n' + s.detail : '') +
           (s.drill
             ? '\n\nDose: ' + s.drill.dose + '\n\n' + s.drill.protocol +
               '\n\nWhat usually goes wrong: ' + s.drill.mistake
-            : (s.detail ? '\n\n' + s.detail : '')) +
+            : '') +
+          (s.steps
+            ? '\n\n' + s.steps.map(function (st, i) { return (i + 1) + '. ' + st; }).join('\n')
+            : '') +
+          (s.check ? '\n\nDone when: ' + s.check : '') +
+          '\n\n' + s.type.note +
           '\n\nPhase: ' + w.phase.name + '. ' + w.phase.objective +
           (w.stage ? '\nStage ' + (w.stage.index + 1) + ' of ' + w.stage.total + ': ' +
             w.stage.stage.name + '. ' + w.stage.stage.work : '');

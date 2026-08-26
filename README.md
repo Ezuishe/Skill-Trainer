@@ -24,8 +24,18 @@ not reach, and show the arithmetic.
 
 ## What's in the curriculum
 
-13 skills · 65 pillars · 260 drills · 195 stages · 65 gates with 195 criteria ·
-6 philosophical tracks × 12 entries.
+13 skills · 65 pillars · 260 drills · 1,046 numbered session steps · 195 stages ·
+65 gates with 195 criteria · 6 philosophical tracks × 12 entries.
+
+**Every session tells you what to do.** Earlier versions only had a protocol on
+drill days, which was 25% of sessions; the other 75% were a topic label and a
+platitude. Acquire and produce sessions now carry authored, numbered steps, and
+the weekly review has a fixed six-point procedure. Coverage is asserted in the
+tests, so it cannot regress.
+
+Every discipline also has a **Before week 1** section: the tools you need, where
+the honest feedback will come from, and a baseline to measure now so progress is
+visible later.
 
 Every pillar carries:
 
@@ -36,6 +46,8 @@ Every pillar carries:
   the part most curricula leave out
 - **standard** — what "done" looks like in one sentence
 - **milestone** — the gate, with criteria another person could verify
+- **study / make** (in `data/sessions-*.js`) — the actual step-by-step work for
+  acquire and produce sessions, each `make` ending in a "done when" test
 
 ## Running it
 
@@ -79,6 +91,9 @@ assets/js/data/disciplines-01-communication.js   writing, speaking, design
 assets/js/data/disciplines-02-influence.js       negotiation, selling, product
 assets/js/data/disciplines-03-building.js        software, applied AI, capital
 assets/js/data/disciplines-04-foundation.js      leadership, judgement, learning, consistency
+assets/js/data/sessions-01..04.js                the numbered steps for every
+                                                 acquire and produce session
+assets/js/data/setup.js                          tools, arena and baseline per skill
 assets/js/data/dispatch.js       6 traditions × 12 entries
 assets/js/engine.js              the planner: verdict, scope, phases, schedule, exports
 assets/js/dispatch-core.js       deterministic date-based selection
@@ -104,9 +119,15 @@ schedule/phase arithmetic, Markdown output, and RFC 5545 line folding in the cal
 export. It also asserts that a session's title never repeats its own drill dose, which
 is the regression that produced a card saying the same thing three times.
 
+It also asserts that **every session in every generated plan has either numbered
+steps or a drill protocol** — the check that stops plans drifting back toward
+vagueness — and that every authored step is a written instruction rather than a
+fragment.
+
 `browser.test.js` additionally checks that the session card does not repeat its heading,
-that stages, drill mistakes and standards render, that your stated objective actually
-appears in the sessions, and that no page scrolls sideways at 390px.
+that stages, drill mistakes, standards and numbered steps render, that the "Before week 1"
+section exists, that your stated objective actually appears in the sessions, and that no
+page scrolls sideways at 390px.
 
 ## Data and privacy
 

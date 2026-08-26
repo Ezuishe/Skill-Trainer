@@ -11,6 +11,20 @@
   var program = null;
   var progress = null;
 
+  /* Numbered steps, the same shape wherever a session appears. */
+  function stepList(steps, check) {
+    if (!steps || !steps.length) return null;
+    var ol = el('ol', { class: 'steps' });
+    steps.forEach(function (text) {
+      ol.appendChild(el('li', { text: text }));
+    });
+    var wrap = el('div', {}, [ol]);
+    if (check) {
+      wrap.appendChild(el('p', { class: 'steps__check', text: 'Done when: ' + check }));
+    }
+    return wrap;
+  }
+
   function sessionKey(week, session) { return 'w' + week.number + 'd' + session.day; }
   function gateKey(phase, i) { return 'p' + phase.index + 'c' + i; }
 
@@ -152,6 +166,59 @@
     root.appendChild(sec);
   }
 
+  /* ------------------------------------------------------------- setup */
+
+  function renderSetup(root) {
+    var setup = program.setup;
+    if (!setup) return;
+    var sec = el('section', { class: 'section' });
+    var wrap = el('div', { class: 'wrap' });
+
+    wrap.appendChild(el('div', { class: 'section__head' }, [
+      el('div', { class: 'section__num', text: '00' }),
+      el('div', {}, [
+        el('h2', { text: 'Before week 1' }),
+        el('p', {
+          class: 'lede', style: 'margin-top:1rem',
+          text: 'Do this before the first session. Most plans fail at the start, because nothing was ' +
+            'set up and there was nowhere to get feedback.'
+        })
+      ])
+    ]));
+
+    var grid = el('div', { class: 'grid grid--2' });
+
+    var tools = el('div', {}, [el('span', { class: 'eyebrow', text: 'What you need' })]);
+    var tl = el('ul', { class: 'list-clean' });
+    setup.tools.forEach(function (t) { tl.appendChild(el('li', { text: t })); });
+    tools.appendChild(tl);
+    grid.appendChild(tools);
+
+    grid.appendChild(el('div', {}, [
+      el('span', { class: 'eyebrow', text: 'Where the feedback comes from' }),
+      el('p', { class: 'small', style: 'margin:0;color:var(--ink-2)', text: setup.arena })
+    ]));
+
+    var base = el('div', { style: 'grid-column:1/-1' }, [
+      el('span', { class: 'eyebrow', text: 'Measure your baseline today' }),
+      el('p', {
+        class: 'small muted', style: 'margin:0 0 0.5rem',
+        text: 'Without this you will not be able to tell later whether any of it worked.'
+      })
+    ]);
+    var bl = stepList(setup.baseline, null);
+    if (bl) base.appendChild(bl);
+    grid.appendChild(base);
+
+    wrap.appendChild(grid);
+    wrap.appendChild(el('div', { class: 'notice', style: 'margin-top:1.5rem' }, [
+      el('span', { class: 'small', text: setup.firstWeek })
+    ]));
+
+    sec.appendChild(wrap);
+    root.appendChild(sec);
+  }
+
   /* --------------------------------------------------------------- today */
 
   function findToday() {
@@ -243,9 +310,15 @@
       }));
     }
 
+    var todaySteps = stepList(s.steps, s.check);
+    if (todaySteps) {
+      todaySteps.style.marginTop = '1.25rem';
+      card.appendChild(todaySteps);
+    }
+
     /* The generic note only earns its place when nothing more specific was
        printed above it. */
-    if (!s.detail && !s.drill) {
+    if (!s.detail && !s.drill && !(s.steps && s.steps.length)) {
       card.appendChild(el('p', {
         class: 'small muted',
         style: 'margin:1rem 0 0',
@@ -589,14 +662,16 @@
           el('span', { class: 'session__type', 'data-t': s.type.key, text: s.type.label }),
           el('span', { class: 'session__focus' }, [
             document.createTextNode(s.title),
+            s.detail
+              ? el('div', { class: 'tiny muted', style: 'margin-top:0.2rem', text: s.detail })
+              : null,
             s.drill
               ? el('div', { class: 'tiny muted', style: 'margin-top:0.2rem' }, [
                   el('span', { class: 'mono', text: s.drill.dose + ' · ' }),
                   document.createTextNode(s.drill.protocol)
                 ])
-              : (s.detail
-                  ? el('div', { class: 'tiny muted', style: 'margin-top:0.2rem', text: s.detail })
-                  : null)
+              : null,
+            stepList(s.steps, s.check)
           ]),
           el('label', { class: 'check', style: 'border:0;padding:0;justify-content:flex-end' }, [
             el('input', {
@@ -824,6 +899,7 @@
     var scrollY = window.scrollY;
     root.innerHTML = '';
     renderHead(root);
+    renderSetup(root);
     renderToday(root);
     renderVerdict(root);
     renderPhases(root);
