@@ -78,7 +78,7 @@ function watch(page, label) {
   await page.waitForTimeout(300);
   const harsh = await page.locator('#preview-body').innerText();
   console.log('\n--- verdict at 4wk x 3h ---\n' + harsh.slice(0, 700));
-  if (!/short of functional|Functional/.test(harsh)) problems.push('no verdict text at low budget');
+  if (!/hours short of being functional|Functional/.test(harsh)) problems.push('no verdict text at low budget');
   await page.screenshot({ path: `${OUT}/02-commission.png`, fullPage: false });
 
   // a realistic budget, then generate
@@ -111,6 +111,31 @@ function watch(page, label) {
     problems.push('program page contains undefined/NaN/[object Object]');
     const m = bodyText.match(/.{60}(undefined|NaN|\[object Object\]).{60}/);
     if (m) problems.push('  context: ' + m[0].replace(/\n/g, ' '));
+  }
+
+  // The reported bug: the session card printed the drill name and dose three times.
+  const todayCard = await page.locator('.section.no-print .card').first().innerText();
+  const drillLine = await page.locator('.section.no-print .card .drill__protocol').count();
+  if (drillLine) {
+    const heading = await page.locator('.section.no-print .card h3').innerText();
+    const occurrences = todayCard.split(heading).length - 1;
+    console.log(`session card repeats its heading ${occurrences}x:`, heading);
+    if (occurrences > 1) problems.push(`session card repeats "${heading}" ${occurrences} times`);
+  }
+
+  // stages and mistakes should be present on the phase view
+  const stageCount = await page.locator('.stage').count();
+  const mistakeCount = await page.locator('.drill__mistake').count();
+  const standardCount = await page.locator('.phase__standard').count();
+  console.log('stages:', stageCount, 'drill mistakes:', mistakeCount, 'standards:', standardCount);
+  if (stageCount < 3) problems.push(`expected stage blocks, got ${stageCount}`);
+  if (mistakeCount < 4) problems.push(`expected drill mistakes, got ${mistakeCount}`);
+  if (standardCount < 1) problems.push(`expected phase standards, got ${standardCount}`);
+
+  // the stated objective should appear in at least one produce session
+  const scheduleText = await page.locator('#program-root').innerText();
+  if (!/Renegotiate my compensation/.test(scheduleText)) {
+    problems.push('stated objective never appears in the sessions');
   }
 
   await page.screenshot({ path: `${OUT}/03-program-top.png` });
@@ -187,7 +212,7 @@ function watch(page, label) {
   if (todayText.length < 200) problems.push('dispatch today card too short');
   await d.screenshot({ path: `${OUT}/06-dispatch.png` });
 
-  await d.locator('.track:has-text("Strategy & Power")').click();
+  await d.locator('.track:has-text("Strategy and Power")').click();
   await d.waitForTimeout(300);
   const afterSwitch = await d.locator('#today').innerText();
   if (afterSwitch === todayText) problems.push('track switch did not change the entry');

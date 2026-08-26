@@ -164,7 +164,7 @@
       host.appendChild(el('div', { class: 'empty' }, [
         el('p', {
           class: 'small', style: 'margin:0',
-          text: 'Nothing kept yet. Keep the passages you intend to return to — the practice line is the part worth revisiting.'
+          text: 'Nothing kept yet. Keep the ones you want to come back to. The practice line is usually the part worth rereading.'
         })
       ]));
       return;

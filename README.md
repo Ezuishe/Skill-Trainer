@@ -1,25 +1,41 @@
 # Skill Trainer
 
-A planning instrument for deliberate practice. You give it a skill and the hours you
-actually have; it gives you a dated training program — phases, named drills with
-protocols, a weekly session schedule, and milestone gates with externally checkable
-criteria — plus an honest verdict on what that hour budget really buys.
+A planning tool for deliberate practice. You give it a skill and the hours you actually
+have. It gives you back a dated training plan: phases that escalate through named
+stages, drills with a dose, a protocol and the mistake people usually make, a weekly
+session schedule, and gates with criteria someone else could check you against. Plus an
+honest verdict on what that many hours really buys.
 
-It also delivers a daily dispatch: one passage from a philosophical tradition you
-choose, with an interpretation, a concrete practice for the day, and a counterweight.
+It also runs a daily dispatch: one passage from a tradition you choose, with what it
+means, one thing to do about it today, and the argument against taking it too far.
 
 **It does not promise success.** No training plan can, and the site says so on every
-relevant page. What it does is refuse to sell a level your hours do not reach, and
-show the arithmetic instead.
+page where it matters. What it does instead is refuse to sell you a level your hours do
+not reach, and show the arithmetic.
 
 ## What's here
 
 | Page | Purpose |
 |---|---|
-| `index.html` | Discipline catalog and the commission form, with a live feasibility verdict |
-| `program.html` | The generated program: verdict, phases, gates, dated schedule, progress, log |
-| `dispatch.html` | Today's passage, the last fortnight's archive, kept passages |
-| `method.html` | How programs are built, where the hour estimates come from, and the limits |
+| `index.html` | The catalogue and the plan builder, with a live feasibility verdict |
+| `program.html` | The generated plan: verdict, phases, stages, gates, dated schedule, progress, log |
+| `dispatch.html` | Today's passage, the last fortnight, and anything you kept |
+| `method.html` | How plans are built, where the hour estimates come from, and the limits |
+
+## What's in the curriculum
+
+13 skills · 65 pillars · 260 drills · 195 stages · 65 gates with 195 criteria ·
+6 philosophical tracks × 12 entries.
+
+Every pillar carries:
+
+- **competencies** — what you need to be able to do
+- **stages** — how the work escalates from the first week of the phase to the last, so
+  week 4 is not a repeat of week 1
+- **drills** — a dose, a protocol, and `mistake`: what usually goes wrong, which is
+  the part most curricula leave out
+- **standard** — what "done" looks like in one sentence
+- **milestone** — the gate, with criteria another person could verify
 
 ## Running it
 
@@ -45,10 +61,13 @@ Netlify, S3, nginx).
    rather than thinned, and the program names what was excluded. Eighty hours on two
    pillars beats eighty hours skimmed across five.
 4. **Phases.** Pillars become dated phases, weighted by importance and compressed
-   where prior experience makes that reasonable.
-5. **Sessions.** Each week is built from a session mix that shifts from acquisition
-   toward production as the program advances, interleaved rather than blocked. Every
-   phase ends at a gate; programs of ten weeks or more get consolidation weeks.
+   where prior experience makes that reasonable. Each phase walks its stages at
+   whatever speed its length allows.
+5. **Sessions.** Each week is built from a session mix that shifts from taking things
+   in toward making things as the plan advances, interleaved rather than blocked. Every
+   session states one task once: a drill's name, dose, protocol and mistake appear
+   exactly where they belong and nowhere else. Sessions also point at the objective you
+   typed, so the plan stays aimed at what you asked for.
 6. **Export.** Markdown, an `.ics` calendar of every session and gate, clipboard, print.
 
 ## Structure
@@ -56,7 +75,10 @@ Netlify, S3, nginx).
 ```
 index.html · program.html · dispatch.html · method.html
 assets/css/main.css              design system (light + dark, print styles)
-assets/js/data/disciplines.js    13 curricula: pillars, drills, gates, metrics, library
+assets/js/data/disciplines-01-communication.js   writing, speaking, design
+assets/js/data/disciplines-02-influence.js       negotiation, selling, product
+assets/js/data/disciplines-03-building.js        software, applied AI, capital
+assets/js/data/disciplines-04-foundation.js      leadership, judgement, learning, consistency
 assets/js/data/dispatch.js       6 traditions × 12 entries
 assets/js/engine.js              the planner: verdict, scope, phases, schedule, exports
 assets/js/dispatch-core.js       deterministic date-based selection
@@ -76,9 +98,15 @@ node tests/browser.test.js     # end-to-end in Chromium; needs playwright instal
 ```
 
 `plan.test.js` checks curriculum integrity (pillar weights sum to 1, every drill has a
-dose and protocol, hour thresholds ascend) and exercises the planner across the whole
-input space, validating schedule/phase arithmetic, Markdown output, and RFC 5545 line
-folding in the calendar export.
+dose, protocol and mistake, every pillar has stages and a standard, hour thresholds
+ascend) and exercises the planner across the whole input space, validating
+schedule/phase arithmetic, Markdown output, and RFC 5545 line folding in the calendar
+export. It also asserts that a session's title never repeats its own drill dose, which
+is the regression that produced a card saying the same thing three times.
+
+`browser.test.js` additionally checks that the session card does not repeat its heading,
+that stages, drill mistakes and standards render, that your stated objective actually
+appears in the sessions, and that no page scrolls sideways at 390px.
 
 ## Data and privacy
 
@@ -88,8 +116,11 @@ the fonts fail to load, the CSS fallback stacks carry the design.
 
 ## Notes on content
 
-Hour estimates are informed approximations, not measurements of any individual, and
-`method.html` says so. Passages in the dispatch are attributed to a work where one is
-identifiable; entries that are commonly misattributed say so in the reading rather
-than passing the attribution along silently. Material touching money and physical
-training is general education, not professional advice.
+Hour estimates are approximations rather than measurements of any individual, and
+`method.html` says so. Dispatch passages are attributed to a work where one is
+identifiable, and the entries that are commonly misattributed say so in the reading
+instead of passing the attribution along quietly. Anything touching money or physical
+training is general education rather than professional advice.
+
+The prose aims to read as though a person wrote it: no em-dash-per-sentence habit, no
+"it's not X, it's Y" constructions, and no aphorism where a plain sentence would do.

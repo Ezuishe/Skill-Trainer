@@ -5,7 +5,9 @@
 global.window = global;
 var path = require('path');
 var root = path.join(__dirname, '..', 'assets', 'js');
-require(path.join(root, 'data', 'disciplines.js'));
+['disciplines-01-communication.js', 'disciplines-02-influence.js',
+  'disciplines-03-building.js', 'disciplines-04-foundation.js']
+  .forEach(function (f) { require(path.join(root, 'data', f)); });
 require(path.join(root, 'data', 'dispatch.js'));
 require(path.join(root, 'engine.js'));
 require(path.join(root, 'dispatch-core.js'));
@@ -34,11 +36,17 @@ DISCIPLINES.forEach(function (d) {
   var w = d.pillars.reduce(function (a, p) { return a + p.weight; }, 0);
   check(d.id + ' weights ≈ 1', Math.abs(w - 1) < 0.02, w.toFixed(3));
   d.pillars.forEach(function (p) {
-    check(d.id + '/' + p.id + ' drills', p.drills.length >= 3);
+    check(d.id + '/' + p.id + ' drills', p.drills.length >= 4, String(p.drills.length));
+    check(d.id + '/' + p.id + ' stages', p.stages && p.stages.length >= 3, p.stages ? String(p.stages.length) : 'none');
+    check(d.id + '/' + p.id + ' standard', !!p.standard && p.standard.length > 20);
+    (p.stages || []).forEach(function (st) {
+      check(d.id + '/' + p.id + '/stage ' + st.name, !!st.name && !!st.work && !!st.check);
+    });
     check(d.id + '/' + p.id + ' criteria', p.milestone.criteria.length >= 3);
     check(d.id + '/' + p.id + ' specialization', !!p.specialization);
     p.drills.forEach(function (dr) {
       check(d.id + '/' + p.id + '/' + dr.name + ' protocol', !!dr.protocol && !!dr.dose);
+      check(d.id + '/' + p.id + '/' + dr.name + ' mistake', !!dr.mistake && dr.mistake.length > 20);
     });
   });
   ['metrics', 'failureModes', 'arena', 'library'].forEach(function (k) {
@@ -79,7 +87,11 @@ DISCIPLINES.forEach(function (d) {
               w.sessions.length === p.input.daysPerWeek,
               w.sessions.length + ' vs ' + p.input.daysPerWeek);
             w.sessions.forEach(function (s) {
-              check('session has focus', typeof s.focus === 'string' && s.focus.length > 0);
+              check('session has title', typeof s.title === 'string' && s.title.length > 0);
+              check('drill sessions carry a drill', s.type.key !== 'drill' || !!s.drill);
+              check('non-drill sessions carry no drill', s.type.key === 'drill' || !s.drill);
+              check('session title is not the drill dose repeated',
+                !s.drill || s.title.indexOf(s.drill.dose) === -1);
               check('session hours > 0', s.hours > 0, String(s.hours));
               check('session date valid', s.date instanceof Date && !isNaN(s.date));
             });
@@ -116,7 +128,7 @@ check('unknown level treated as novice', weird.verdict.bankedHours === 0);
 
 var tiny = Planner.build({ disciplineId: 'software-engineering', weeks: 1, hoursPerWeek: 1, daysPerWeek: 1, level: 'novice' });
 check('tiny program has 1 phase', tiny.phases.length === 1, String(tiny.phases.length));
-check('tiny program declares shortfall', /short of functional/.test(tiny.verdict.statement));
+check('tiny program declares shortfall', /hours short of being functional/.test(tiny.verdict.statement));
 check('tiny program cut scope', tiny.scope.dropped.length > 0);
 
 var huge = Planner.build({ disciplineId: 'learning-velocity', weeks: 156, hoursPerWeek: 40, daysPerWeek: 6, level: 'advanced' });
@@ -156,7 +168,15 @@ console.log('phases:', demo.phases.map(p => p.name + ' (' + p.weeks + 'w/' + p.h
 console.log('dropped:', demo.scope.dropped.map(d => d.name).join(', ') || '(none)');
 console.log('week 1 sessions:');
 demo.schedule[0].sessions.forEach(s =>
-  console.log('  ', Planner.fmtShort(s.date), s.type.label.padEnd(13), s.hours + 'h', '-', s.focus.slice(0, 72)));
+  console.log('  ', Planner.fmtShort(s.date), s.type.label.padEnd(13), s.hours + 'h', '-', s.title.slice(0, 76)));
+console.log('week 1 stage:', demo.schedule[0].stage.stage.name, '-', demo.schedule[0].stage.stage.work.slice(0, 90));
+console.log('\nsample drill session detail:');
+var ds = demo.schedule[1].sessions.filter(x => x.drill)[0];
+console.log('  ', ds.title, '|', ds.drill.dose);
+console.log('  ', ds.drill.protocol.slice(0, 150));
+console.log('   goes wrong:', ds.drill.mistake.slice(0, 120));
+var po = demo.schedule[1].sessions.filter(x => x.type.key === 'produce')[0];
+console.log('\nproduce session (objective tailoring):', po ? po.title.slice(0, 110) : '(none this week)');
 
 console.log('\n' + (fails ? fails + ' FAILURES' : 'all checks passed'));
 process.exit(fails ? 1 : 0);

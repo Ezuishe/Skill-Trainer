@@ -117,79 +117,85 @@
 
     if (!reached) {
       var shortfall = discipline.hours.functional - effective;
-      v.headline = 'Below the functional threshold';
+      v.headline = 'Short of the first level';
       v.statement =
-        'This budget is ' + Math.round(shortfall) + ' hours short of functional competence in ' +
-        discipline.name.toLowerCase() + '. That is not a reason to stop — it is a reason to narrow ' +
-        'the target. The program below trains the highest-leverage fraction of the discipline rather ' +
-        'than pretending to cover all of it.';
-      v.owns = 'Real, usable capability in one narrow slice of the skill.';
-      v.lacks = 'Breadth. You will be able to do a specific thing well and will still need help outside it.';
+        'You are about ' + Math.round(shortfall) + ' hours short of being functional at ' +
+        discipline.name.toLowerCase() + '. That is worth knowing now rather than in week five. ' +
+        'The plan below narrows the target so those hours buy you one thing you can actually do, ' +
+        'instead of a light coating of everything.';
+      v.owns = 'One narrow slice of the skill, properly. Small, but real.';
+      v.lacks = 'Everything either side of that slice. You will still need help outside it.';
     } else {
-      v.headline = reached.label + ' — reachable';
+      v.headline = reached.label;
       v.statement =
-        Math.round(totalHours) + ' hours of deliberate practice' +
-        (banked > 0 ? ', on top of roughly ' + Math.round(banked) + ' hours you already hold,' : '') +
-        ' lands at ' + reached.label.toLowerCase() + ' in ' + discipline.name.toLowerCase() +
-        ' — provided the hours are deliberate and the milestone gates are actually passed.';
+        Math.round(totalHours) + ' hours' +
+        (banked > 0
+          ? ', plus roughly ' + Math.round(banked) + ' you already have from experience,'
+          : '') +
+        ' gets you to ' + reached.label.toLowerCase() + '. That assumes the hours are real practice ' +
+        'rather than reading about it, and that you pass the gates instead of walking past them.';
       v.owns = discipline.proofs[reached.key];
       v.lacks = next
-        ? discipline.proofs[next.key] + ' — that needs roughly ' +
-          Math.round(discipline.hours[next.key] - effective) + ' further hours.'
-        : 'Nothing on this ladder. Beyond here, progress comes from the arena, not from a syllabus.';
+        ? discipline.proofs[next.key] + ' That is another ' +
+          Math.round(discipline.hours[next.key] - effective) + ' hours or so.'
+        : 'Nothing left on this ladder. Past here you improve through the work itself, not a syllabus.';
     }
 
-    /* The three real levers, quantified. */
+    /* The three things you can actually change, with the arithmetic done. */
     v.levers = [];
     if (next) {
       var gap = discipline.hours[next.key] - effective;
       var weeksNeeded = Math.ceil(gap / input.hoursPerWeek);
       var hoursNeeded = gap / input.weeks;
+      var neededPerWeek = round1(input.hoursPerWeek + hoursNeeded);
       v.levers.push({
-        name: 'Extend the horizon',
-        detail: 'Keep ' + input.hoursPerWeek + ' h/week and add ' + weeksNeeded +
-          ' weeks (' + (input.weeks + weeksNeeded) + ' total) to reach ' + next.label + '.'
+        name: 'Give it longer',
+        detail: 'Same ' + input.hoursPerWeek + ' hours a week, ' + weeksNeeded + ' more weeks. ' +
+          'That is ' + (input.weeks + weeksNeeded) + ' weeks in total to reach ' +
+          next.label.toLowerCase() + '.'
       });
       v.levers.push({
-        name: 'Raise the intensity',
-        detail: 'Keep ' + input.weeks + ' weeks and train ' + round1(input.hoursPerWeek + hoursNeeded) +
-          ' h/week to reach ' + next.label + '.' +
-          (input.hoursPerWeek + hoursNeeded > 35
-            ? ' At that rate this is a full-time occupation, not a side project.'
-            : '')
+        name: 'Go harder',
+        detail: 'Same ' + input.weeks + ' weeks at ' + neededPerWeek + ' hours a week.' +
+          (neededPerWeek > 35
+            ? ' At that point it is a full-time job, so be honest about whether you have that.'
+            : neededPerWeek > 20
+              ? ' That is a serious second job on top of whatever else you do.'
+              : '')
       });
       v.levers.push({
-        name: 'Narrow the scope',
-        detail: 'Spend the same hours on fewer pillars. Concentrated on one specialisation, ' +
-          Math.round(totalHours) + ' hours goes considerably further than spread across the full discipline.'
+        name: 'Want less',
+        detail: 'Keep the hours and cut the scope. Pick one part of the skill and go deep. ' +
+          Math.round(totalHours) + ' hours on two pillars gets you further than the same hours ' +
+          'spread thin across five.'
       });
     }
 
-    /* Sustainability check — the failure mode that kills most programs. */
+    /* The things that usually break a programme, checked against these inputs. */
     v.warnings = [];
     if (input.hoursPerWeek > 30) {
       v.warnings.push(
-        'Above 30 hours per week of deliberate practice alongside other obligations, the ' +
-        'failure rate is high and the usual cause is sleep debt. The program schedules ' +
-        'consolidation weeks; take them.'
+        'Over 30 hours a week of real practice alongside everything else, most people stop within ' +
+        'two months, and the usual cause is sleep. The lighter weeks in this plan are there for a ' +
+        'reason. Take them.'
       );
     }
     if (input.hoursPerWeek / input.daysPerWeek > 4) {
       v.warnings.push(
-        'Sessions over four hours produce diminishing returns. Consider spreading these hours ' +
-        'across more days rather than longer blocks.'
+        'Your sessions come out over four hours. The back half of a session that long is rarely ' +
+        'worth much. Spread the same hours across more days if you can.'
       );
     }
     if (input.weeks < 4) {
       v.warnings.push(
-        'Programs under four weeks cannot include a consolidation cycle. Expect the gains to ' +
-        'decay faster than a longer program at the same total hours.'
+        'Under four weeks there is no room for a lighter week, and not much room to fix a plan that ' +
+        'is not working. Expect this to fade faster than the same hours spent over longer.'
       );
     }
     if (input.daysPerWeek < 3) {
       v.warnings.push(
-        'Below three sessions per week, retention between sessions becomes the binding constraint. ' +
-        'More frequent, shorter sessions beat fewer long ones at equal total hours.'
+        'With fewer than three sessions a week you will spend the start of each one remembering ' +
+        'where you were. Shorter and more often beats longer and rarer at the same total.'
       );
     }
     return v;
@@ -286,6 +292,8 @@
         endDate: end,
         mix: mix,
         competencies: w.pillar.competencies,
+        stages: w.pillar.stages || [],
+        standard: w.pillar.standard || '',
         drills: w.pillar.drills,
         milestone: w.pillar.milestone
       });
@@ -300,22 +308,22 @@
     acquire: {
       key: 'acquire',
       label: 'Acquire',
-      note: 'New material, capped. Input is the smallest part of the work.'
+      note: 'Take in new material, then stop. This is the smallest part of the work.'
     },
     drill: {
       key: 'drill',
       label: 'Drill',
-      note: 'Isolated repetition against one named weakness.'
+      note: 'Repetition on one thing you are bad at.'
     },
     produce: {
       key: 'produce',
       label: 'Produce',
-      note: 'Make the real artefact. This is where the skill actually forms.'
+      note: 'Make the actual thing. This is where the skill forms.'
     },
     review: {
       key: 'review',
       label: 'Review & Log',
-      note: 'Score the week, update the log, choose next week’s weakness.'
+      note: 'Score the week, write the log, choose what to work on next.'
     }
   };
 
@@ -358,32 +366,72 @@
     });
   }
 
-  /* Session-level focus: cycle drills and competencies so no two consecutive
-   * weeks repeat the same prescription. */
-  function focusFor(phase, session, weekInPhase) {
+  /* Which stage of the pillar a given week falls in. A three-week phase and a
+   * ten-week phase both walk the same stages, at different speeds. */
+  function stageFor(phase, weekInPhase) {
+    var stages = phase.stages && phase.stages.length ? phase.stages : null;
+    if (!stages) return null;
+    var idx = Math.min(stages.length - 1, Math.floor((weekInPhase * stages.length) / phase.weeks));
+    return { index: idx, total: stages.length, stage: stages[idx] };
+  }
+
+  /* What a single session is for. Returns a title and a supporting line; the
+   * drill object travels separately so the renderer never prints the same
+   * sentence twice. */
+  function sessionWork(phase, session, weekInPhase, stageInfo, objective) {
     var drills = phase.drills || [];
     var comps = phase.competencies || [];
     var crit = (phase.milestone && phase.milestone.criteria) || [];
+    var stage = stageInfo && stageInfo.stage;
+    var seed = weekInPhase + session.day;
+
     switch (session.type.key) {
       case 'acquire':
-        return comps.length ? comps[(weekInPhase + session.day) % comps.length] : phase.objective;
-      case 'drill':
-        var drill = drills.length ? drills[(weekInPhase + session.day) % drills.length] : null;
-        return drill ? drill.name + ' — ' + drill.dose : 'Isolated repetition on your weakest component';
-      case 'produce':
-        return crit.length
-          ? 'Work directly toward: ' + crit[(weekInPhase) % crit.length]
-          : 'Produce a real artefact using this pillar';
-      default:
-        return 'Score the week against your metrics; name next week’s single weakness';
-    }
-  }
+        /* The stage text is already shown at week level, so this line says
+           something the reader has not just read. */
+        return {
+          title: comps.length ? comps[seed % comps.length] : phase.objective,
+          detail: 'Take in only what serves this, then stop and use it. If you are still reading ' +
+            'at the halfway point, you have overrun.',
+          drill: null
+        };
 
-  function drillDetail(phase, session, weekInPhase) {
-    if (session.type.key !== 'drill') return null;
-    var drills = phase.drills || [];
-    if (!drills.length) return null;
-    return drills[(weekInPhase + session.day) % drills.length];
+      case 'drill':
+        var drill = drills.length ? drills[seed % drills.length] : null;
+        return {
+          title: drill ? drill.name : 'Work your weakest component',
+          detail: null,
+          drill: drill
+        };
+
+      case 'produce': {
+        /* Alternate between the gate criteria and the thing the user actually
+         * said they wanted, so the programme keeps pointing at their goal. */
+        var useObjective = objective && (weekInPhase % 2 === 1);
+        if (useObjective) {
+          return {
+            title: 'Your objective: ' + objective,
+            detail: 'Use this phase (' + phase.name.toLowerCase() + ') on it directly. ' +
+              'Produce something you could show someone.',
+            drill: null
+          };
+        }
+        return {
+          title: crit.length ? crit[weekInPhase % crit.length] : 'Make something real with this pillar',
+          detail: 'Make the thing itself, not notes about it. Someone else should be able to look at it when you are done.',
+          drill: null
+        };
+      }
+
+      default:
+        return {
+          title: 'Score the week and pick next week’s weakness',
+          detail: stage && stage.check
+            ? 'Against this stage: ' + stage.check
+            : 'Check yourself against the gate criteria for this phase.',
+          drill: null
+        };
+    }
   }
 
   /* ------------------------------------------------------------ schedule */
@@ -391,6 +439,7 @@
   function buildSchedule(discipline, input, phases, startDate) {
     var weeks = [];
     var consolidationEvery = input.weeks >= 10 ? 8 : 0;
+    var objective = input.objective;
 
     phases.forEach(function (phase) {
       for (var w = 0; w < phase.weeks; w++) {
@@ -398,14 +447,18 @@
         var weekStart = addDays(startDate, (absolute - 1) * 7);
         var isConsolidation =
           consolidationEvery && absolute % consolidationEvery === 0 && absolute !== input.weeks;
+        var stageInfo = stageFor(phase, w);
         var sessions = weekTemplate(phase, input).map(function (s) {
+          var work = sessionWork(phase, s, w, stageInfo, objective);
           return {
             day: s.day,
             date: addDays(weekStart, s.day - 1),
             type: s.type,
             hours: isConsolidation ? round1(s.hours * 0.6) : s.hours,
-            focus: focusFor(phase, s, w),
-            drill: drillDetail(phase, s, w)
+            title: work.title,
+            detail: work.detail,
+            drill: work.drill,
+            stage: stageInfo
           };
         });
 
@@ -413,6 +466,7 @@
           number: absolute,
           weekInPhase: w + 1,
           phase: phase,
+          stage: stageInfo,
           startDate: weekStart,
           endDate: addDays(weekStart, 6),
           consolidation: isConsolidation,
@@ -420,8 +474,9 @@
           sessions: sessions,
           gate: w === phase.weeks - 1 ? phase.milestone : null,
           theme: isConsolidation
-            ? 'Consolidation week — reduced load, retrieval practice, and an honest audit of the last block'
-            : phase.name + ' · week ' + (w + 1) + ' of ' + phase.weeks
+            ? 'Lighter week. Reduced load, recall practice, and an honest look at the last block.'
+            : phase.name + (stageInfo ? ' · ' + stageInfo.stage.name : '') +
+              ' (week ' + (w + 1) + ' of ' + phase.weeks + ')'
         });
       }
     });
@@ -433,10 +488,10 @@
   function dailyBlock(input) {
     var minutes = Math.round((input.hoursPerWeek / input.daysPerWeek) * 60);
     var parts = [
-      { name: 'Retrieval warm-up', share: 0.1, note: 'Closed-book recall of the last session. No notes open.' },
-      { name: 'Edge work', share: 0.5, note: 'The drill or task at the limit of your current ability. Aim for a 50–85% success rate.' },
-      { name: 'Application', share: 0.3, note: 'Use it on something real, with consequences, today.' },
-      { name: 'Log', share: 0.1, note: 'Three lines: what you practised, what was hard, what changes next session.' }
+      { name: 'Recall', share: 0.1, note: 'Write down what you remember from last session with your notes shut, then check.' },
+      { name: 'The hard part', share: 0.5, note: 'The drill or task at the edge of what you can do. You should be getting it wrong maybe a third of the time.' },
+      { name: 'Use it', share: 0.3, note: 'Apply it to real work today, where being wrong matters.' },
+      { name: 'Log', share: 0.1, note: 'Three lines: what you practised, what was hard, what you will change next time.' }
     ];
     return parts.map(function (p) {
       return { name: p.name, minutes: Math.max(3, Math.round(minutes * p.share)), note: p.note };
@@ -495,7 +550,7 @@
 
   function toMarkdown(p) {
     var L = [];
-    L.push('# ' + p.discipline.name + ' — ' + p.input.weeks + '-week program');
+    L.push('# ' + p.discipline.name + ': a ' + p.input.weeks + '-week plan');
     L.push('');
     L.push('- **Budget:** ' + p.input.hoursPerWeek + ' h/week × ' + p.input.weeks + ' weeks = **' +
       p.totalHours + ' hours**');
@@ -538,7 +593,7 @@
     L.push('## Phases');
     p.phases.forEach(function (ph) {
       L.push('');
-      L.push('### Phase ' + ph.index + ': ' + ph.name + (ph.compressed ? ' *(compressed — prior experience)*' : ''));
+      L.push('### Phase ' + ph.index + ': ' + ph.name + (ph.compressed ? ' *(compressed, because of your experience)*' : ''));
       L.push('');
       L.push('*Weeks ' + ph.weekStart + '–' + ph.weekEnd + ' · ' + ph.hours + ' hours · ' +
         fmtShort(ph.startDate) + ' → ' + fmtShort(ph.endDate) + '*');
@@ -563,7 +618,9 @@
       L.push('**Week ' + w.number + '** (' + fmtShort(w.startDate) + '–' + fmtShort(w.endDate) + ') — ' +
         w.theme + ' · ' + w.hours + ' h');
       w.sessions.forEach(function (s) {
-        L.push('  - ' + fmtShort(s.date) + ' · ' + s.type.label + ' (' + s.hours + ' h): ' + s.focus);
+        L.push('  - ' + fmtShort(s.date) + ' · ' + s.type.label + ' (' + s.hours + ' h): ' + s.title);
+        if (s.drill) L.push('      ' + s.drill.dose + ' — ' + s.drill.protocol);
+        else if (s.detail) L.push('      ' + s.detail);
       });
       if (w.gate) L.push('  - **GATE: ' + w.gate.name + '**');
       L.push('');
@@ -576,7 +633,7 @@
     L.push('');
     p.discipline.failureModes.forEach(function (f) { L.push('- **' + f.name + '** → ' + f.fix); });
     L.push('');
-    L.push('## Arena — where the feedback comes from');
+    L.push('## Where the feedback comes from');
     L.push('');
     p.discipline.arena.forEach(function (a) { L.push('- ' + a); });
     L.push('');
@@ -619,15 +676,20 @@
       'PRODID:-//Skill Trainer//Program//EN',
       'CALSCALE:GREGORIAN',
       'METHOD:PUBLISH',
-      'X-WR-CALNAME:' + icsEscape(p.discipline.name + ' program')
+      'X-WR-CALNAME:' + icsEscape(p.discipline.name + ' plan')
     ];
     var stamp = icsDate(new Date()) + 'T000000Z';
     p.schedule.forEach(function (w) {
       w.sessions.forEach(function (s) {
         var uid = p.id + '-w' + w.number + 'd' + s.day + '@skill-trainer';
-        var desc = s.type.note + '\n\nFocus: ' + s.focus +
-          (s.drill ? '\n\nProtocol: ' + s.drill.protocol : '') +
-          '\n\nPhase: ' + w.phase.name + ' — ' + w.phase.objective;
+        var desc = s.title + '\n\n' + s.type.note +
+          (s.drill
+            ? '\n\nDose: ' + s.drill.dose + '\n\n' + s.drill.protocol +
+              '\n\nWhat usually goes wrong: ' + s.drill.mistake
+            : (s.detail ? '\n\n' + s.detail : '')) +
+          '\n\nPhase: ' + w.phase.name + '. ' + w.phase.objective +
+          (w.stage ? '\nStage ' + (w.stage.index + 1) + ' of ' + w.stage.total + ': ' +
+            w.stage.stage.name + '. ' + w.stage.stage.work : '');
         lines.push('BEGIN:VEVENT');
         lines.push('UID:' + uid);
         lines.push('DTSTAMP:' + stamp);

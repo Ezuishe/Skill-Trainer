@@ -53,7 +53,7 @@
     var t = totals();
     var sec = el('section', { class: 'wrap', style: 'padding-block:clamp(2.5rem,6vw,4.5rem)' });
 
-    sec.appendChild(el('span', { class: 'eyebrow', text: program.discipline.discipline + ' · program' }));
+    sec.appendChild(el('span', { class: 'eyebrow', text: program.discipline.discipline + ' · training plan' }));
     sec.appendChild(el('h1', { style: 'font-size:clamp(2.2rem,5vw,3.6rem)', text: program.discipline.name }));
     sec.appendChild(el('p', {
       class: 'lede',
@@ -66,7 +66,7 @@
         class: 'notice notice--flat',
         style: 'margin-top:1.5rem;max-width:68ch'
       }, [
-        el('span', { class: 'eyebrow', style: 'margin-bottom:0.25rem', text: 'Your stated objective' }),
+        el('span', { class: 'eyebrow', style: 'margin-bottom:0.25rem', text: 'What you said you wanted' }),
         el('span', { class: 'small', text: i.objective })
       ]));
     }
@@ -130,16 +130,16 @@
           window.App.download(
             program.discipline.id + '-program.ics', P.toICS(program), 'text/calendar'
           );
-          window.App.toast('Calendar file downloaded — import it into your calendar app.');
+          window.App.toast('Calendar file downloaded. Import it into your calendar app.');
         }
       }),
       el('button', {
         class: 'btn btn--ghost', type: 'button', text: 'Copy plan',
         onclick: function () {
           window.App.copy(P.toMarkdown(program)).then(function () {
-            window.App.toast('Full program copied to clipboard.');
+            window.App.toast('Copied the whole plan to the clipboard.');
           }, function () {
-            window.App.toast('Clipboard blocked — use the Markdown download instead.');
+            window.App.toast('Clipboard blocked by the browser. Use the Markdown download instead.');
           });
         }
       }),
@@ -183,7 +183,7 @@
           class: 'small',
           style: 'margin:0',
           text: program.endDate < new Date()
-            ? 'The program window has closed. Score yourself against the gates below, then commission the next one at the level you actually reached.'
+            ? 'The plan has run its course. Score yourself against the gates below, then build the next one from the level you actually reached.'
             : 'No sessions scheduled.'
         })
       ]));
@@ -203,28 +203,58 @@
       }, [
         el('div', {}, [
           el('span', { class: 'session__type', 'data-t': s.type.key, text: s.type.label }),
-          el('h3', { style: 'margin-top:0.35rem', text: w.phase.name }),
-          el('p', { class: 'small muted', style: 'margin:0.25rem 0 0', text: w.phase.objective })
+          el('h3', { style: 'margin-top:0.35rem', text: s.title })
         ]),
         el('div', { style: 'text-align:right' }, [
           el('div', { class: 'mono small', text: P.fmtDate(s.date) }),
           el('div', { class: 'mono small muted', text: s.hours + ' hours · week ' + w.number })
         ])
-      ]),
-      el('p', { style: 'margin:1.5rem 0 0.5rem;font-size:1.05rem', text: s.focus }),
-      el('p', { class: 'small muted', style: 'margin:0', text: s.type.note })
+      ])
     ]);
+
+    /* Where this sits in the arc, so the session is not free-floating. */
+    card.appendChild(el('p', {
+      class: 'tiny muted',
+      style: 'margin:0.75rem 0 0'
+    }, [
+      document.createTextNode(w.phase.name + ' · ' + w.phase.objective),
+      s.stage
+        ? el('span', {
+            text: '  ·  Stage ' + (s.stage.index + 1) + ' of ' + s.stage.total + ': ' + s.stage.stage.name
+          })
+        : null
+    ]));
 
     if (s.drill) {
       card.appendChild(el('div', { class: 'drill', style: 'margin-top:1.5rem' }, [
         el('span', { class: 'drill__dose', text: s.drill.dose }),
-        el('div', { class: 'drill__name', text: s.drill.name }),
-        el('p', { class: 'drill__protocol', text: s.drill.protocol })
+        el('p', { class: 'drill__protocol', text: s.drill.protocol }),
+        s.drill.mistake
+          ? el('p', {
+              class: 'drill__mistake',
+              text: 'What usually goes wrong: ' + s.drill.mistake
+            })
+          : null
       ]));
+    } else if (s.detail) {
+      card.appendChild(el('p', {
+        style: 'margin:1.25rem 0 0;color:var(--ink-2)',
+        text: s.detail
+      }));
+    }
+
+    /* The generic note only earns its place when nothing more specific was
+       printed above it. */
+    if (!s.detail && !s.drill) {
+      card.appendChild(el('p', {
+        class: 'small muted',
+        style: 'margin:1rem 0 0',
+        text: s.type.note
+      }));
     }
 
     var block = el('div', { style: 'margin-top:1.75rem;border-top:1px solid var(--rule);padding-top:1.25rem' });
-    block.appendChild(el('span', { class: 'eyebrow', text: 'Session structure' }));
+    block.appendChild(el('span', { class: 'eyebrow', text: 'How to spend the session' }));
     var table = el('table', { class: 'table' });
     program.dailyBlock.forEach(function (b) {
       table.appendChild(el('tr', {}, [
@@ -245,7 +275,7 @@
           render();
         }
       }),
-      el('span', { text: 'Session complete — log it' })
+      el('span', { text: 'Done. Log it.' })
     ]);
     card.appendChild(label);
 
@@ -263,10 +293,10 @@
     wrap.appendChild(el('div', { class: 'section__head' }, [
       el('div', { class: 'section__num', text: '02' }),
       el('div', {}, [
-        el('h2', { text: 'What these hours actually buy' }),
+        el('h2', { text: 'What these hours buy' }),
         el('p', {
           class: 'lede', style: 'margin-top:1rem',
-          text: 'Stated before you begin, so the program cannot quietly redefine success later.'
+          text: 'Written down before you start, so this cannot quietly move the goalposts later.'
         })
       ])
     ]));
@@ -295,18 +325,18 @@
 
     box.appendChild(el('div', { class: 'grid grid--2', style: 'margin-top:1.5rem' }, [
       el('div', {}, [
-        el('h4', { text: 'What you will own' }),
+        el('h4', { text: 'What you will be able to do' }),
         el('p', { class: 'small muted', style: 'margin:0.35rem 0 0', text: v.owns })
       ]),
       el('div', {}, [
-        el('h4', { text: 'What you will still lack' }),
+        el('h4', { text: 'What you still will not' }),
         el('p', { class: 'small muted', style: 'margin:0.35rem 0 0', text: v.lacks })
       ])
     ]));
 
     if (v.levers.length) {
       var levers = el('div', { class: 'levers' });
-      levers.appendChild(el('span', { class: 'eyebrow', text: 'The three levers, quantified' }));
+      levers.appendChild(el('span', { class: 'eyebrow', text: 'If you want more than that' }));
       v.levers.forEach(function (l) {
         levers.appendChild(el('div', { class: 'lever' }, [
           el('b', { text: l.name }),
@@ -320,15 +350,15 @@
 
     if (program.scope.dropped.length) {
       var cut = el('div', { class: 'notice', style: 'margin-top:1.5rem' });
-      cut.appendChild(el('span', { class: 'eyebrow', style: 'margin-bottom:0.35rem', text: 'Deliberately cut from scope' }));
+      cut.appendChild(el('span', { class: 'eyebrow', style: 'margin-bottom:0.35rem', text: 'Left out on purpose' }));
       cut.appendChild(el('p', {
         class: 'small', style: 'margin:0 0 0.75rem',
-        text: 'Your budget covers ' + program.scope.included.length + ' pillars properly. ' +
-          'The rest are excluded rather than thinned, because a diluted pillar teaches nothing:'
+        text: 'Your hours cover ' + program.scope.included.length + ' pillars properly. The rest are ' +
+          'cut rather than thinned down, because half a pillar teaches you very little. Cut:'
       }));
       var ul = el('ul', { class: 'list-clean' });
       program.scope.dropped.forEach(function (d) {
-        ul.appendChild(el('li', { text: d.name + ' — ' + d.objective }));
+        ul.appendChild(el('li', { text: d.name + '. ' + d.objective }));
       });
       cut.appendChild(ul);
       wrap.appendChild(cut);
@@ -361,8 +391,8 @@
         el('h2', { text: 'Phases' }),
         el('p', {
           class: 'lede', style: 'margin-top:1rem',
-          text: 'Each phase ends at a gate. Time served does not advance you — evidence does. ' +
-            'If a gate does not pass, repeat the phase’s final week rather than moving on.'
+          text: 'Each phase ends at a gate. You move on when you can do the things listed, not when ' +
+            'the weeks run out. If a gate does not pass, repeat the last week of the phase.'
         })
       ])
     ]));
@@ -400,10 +430,29 @@
         drills.appendChild(el('div', { class: 'drill' }, [
           el('span', { class: 'drill__dose', text: d.dose }),
           el('div', { class: 'drill__name', text: d.name }),
-          el('p', { class: 'drill__protocol', text: d.protocol })
+          el('p', { class: 'drill__protocol', text: d.protocol }),
+          d.mistake
+            ? el('p', { class: 'drill__mistake', text: 'What usually goes wrong: ' + d.mistake })
+            : null
         ]));
       });
       body.appendChild(drills);
+
+      /* How the phase escalates week to week. */
+      if (ph.stages && ph.stages.length) {
+        var stages = el('div', {}, [el('span', { class: 'eyebrow', text: 'How this phase progresses' })]);
+        ph.stages.forEach(function (st, i) {
+          stages.appendChild(el('div', { class: 'stage' }, [
+            el('span', { class: 'stage__n', text: String(i + 1) }),
+            el('div', {}, [
+              el('div', { class: 'stage__name', text: st.name }),
+              el('p', { class: 'stage__work', text: st.work }),
+              el('p', { class: 'stage__check', text: 'Done when: ' + st.check })
+            ])
+          ]));
+        });
+        body.appendChild(stages);
+      }
 
       var mix = el('div', {}, [
         el('span', { class: 'eyebrow', text: 'Session mix in this phase' }),
@@ -424,15 +473,22 @@
         el('p', {
           class: 'tiny muted',
           style: 'margin-top:0.75rem',
-          text: 'Acquisition falls and production rises as the program advances. Reading is never the majority of a session.'
+          text: 'Taking things in drops off as the plan goes on and making things rises. Reading is never most of a week.'
         })
       ]);
       body.appendChild(mix);
 
       node.appendChild(body);
 
+      if (ph.standard) {
+        node.appendChild(el('p', {
+          class: 'phase__standard',
+          text: 'What good looks like: ' + ph.standard
+        }));
+      }
+
       var gate = el('div', { class: 'gate' });
-      gate.appendChild(el('div', { class: 'gate__title', text: 'Gate — ' + ph.milestone.name }));
+      gate.appendChild(el('div', { class: 'gate__title', text: 'Gate: ' + ph.milestone.name }));
       ph.milestone.criteria.forEach(function (c, idx) {
         var k = gateKey(ph, idx);
         gate.appendChild(el('label', { class: 'check' }, [
@@ -468,8 +524,8 @@
         el('h2', { text: 'Week by week' }),
         el('p', {
           class: 'lede', style: 'margin-top:1rem',
-          text: 'Every session, dated. Tick them as you go — the count is the only honest record of ' +
-            'whether the program is being run or merely admired.'
+          text: 'Every session, dated. Tick them off as you go. The count is the only honest record ' +
+            'of whether you are running this or just looking at it.'
         })
       ])
     ]));
@@ -522,7 +578,8 @@
       body.appendChild(el('p', {
         class: 'tiny muted',
         style: 'margin:0 0 0.75rem',
-        text: P.fmtDate(w.startDate) + ' – ' + P.fmtDate(w.endDate) + ' · ' + w.phase.name
+        text: P.fmtDate(w.startDate) + ' – ' + P.fmtDate(w.endDate) + ' · ' + w.phase.name +
+          (w.stage ? ' · ' + w.stage.stage.name + ': ' + w.stage.stage.work : '')
       }));
 
       w.sessions.forEach(function (s) {
@@ -531,8 +588,15 @@
           el('span', { class: 'session__date', text: P.fmtShort(s.date) }),
           el('span', { class: 'session__type', 'data-t': s.type.key, text: s.type.label }),
           el('span', { class: 'session__focus' }, [
-            document.createTextNode(s.focus),
-            s.drill ? el('div', { class: 'tiny muted', style: 'margin-top:0.2rem', text: s.drill.protocol }) : null
+            document.createTextNode(s.title),
+            s.drill
+              ? el('div', { class: 'tiny muted', style: 'margin-top:0.2rem' }, [
+                  el('span', { class: 'mono', text: s.drill.dose + ' · ' }),
+                  document.createTextNode(s.drill.protocol)
+                ])
+              : (s.detail
+                  ? el('div', { class: 'tiny muted', style: 'margin-top:0.2rem', text: s.detail })
+                  : null)
           ]),
           el('label', { class: 'check', style: 'border:0;padding:0;justify-content:flex-end' }, [
             el('input', {
@@ -552,7 +616,7 @@
       if (w.gate) {
         body.appendChild(el('div', { class: 'notice', style: 'margin-top:1rem' }, [
           el('span', { class: 'small' }, [
-            el('strong', { text: 'Gate week — ' + w.gate.name + '. ' }),
+            el('strong', { text: 'Gate week: ' + w.gate.name + '. ' }),
             document.createTextNode('Score yourself against the criteria in Phase ' + w.phase.index +
               ' before starting the next phase.')
           ])
@@ -576,7 +640,7 @@
 
     wrap.appendChild(el('div', { class: 'section__head' }, [
       el('div', { class: 'section__num', text: '05' }),
-      el('div', {}, [el('h2', { text: 'Instruments' })])
+      el('div', {}, [el('h2', { text: 'Reference' })])
     ]));
 
     var grid = el('div', { class: 'grid grid--2' });
@@ -604,10 +668,10 @@
     grid.appendChild(fails);
 
     var arena = el('div', {}, [
-      el('span', { class: 'eyebrow', text: 'Arena — where the feedback comes from' }),
+      el('span', { class: 'eyebrow', text: 'Where the feedback comes from' }),
       el('p', {
         class: 'small muted',
-        text: 'Practice without an arena plateaus quickly and invisibly. Choose at least one before week two.'
+        text: 'Pick at least one of these before week two. Practising with nobody watching plateaus quickly, and quietly.'
       })
     ]);
     var al = el('ul', { class: 'list-clean' });
@@ -619,7 +683,7 @@
       el('span', { class: 'eyebrow', text: 'Library' }),
       el('p', {
         class: 'small muted',
-        text: 'Read inside your acquisition sessions only. Reading beyond that budget is comfortable and does not train the skill.'
+        text: 'Read during your acquire sessions and not outside them. Reading past that budget is comfortable and does not train anything.'
       })
     ]);
     var lt = el('table', { class: 'table' });
@@ -652,8 +716,8 @@
         el('h2', { text: 'Session log' }),
         el('p', {
           class: 'lede', style: 'margin-top:1rem',
-          text: 'Three lines per session: what you practised, what was hard, what changes next time. ' +
-            'The log is the difference between practice and repetition — it is how the program corrects itself.'
+          text: 'Three lines a session: what you practised, what was hard, what changes next time. ' +
+            'This is how the plan corrects itself, and it is the difference between practising and just repeating.'
         })
       ])
     ]));
@@ -681,7 +745,7 @@
 
     if (!progress.logs.length) {
       wrap.appendChild(el('div', { class: 'empty' }, [
-        el('p', { class: 'small', style: 'margin:0', text: 'No entries yet. The first one is the hardest.' })
+        el('p', { class: 'small', style: 'margin:0', text: 'Nothing logged yet.' })
       ]));
     } else {
       progress.logs.forEach(function (entry) {
@@ -714,11 +778,11 @@
     var sec = el('section', { class: 'section no-print' });
     var wrap = el('div', { class: 'wrap' });
     wrap.appendChild(el('div', { class: 'btn-row' }, [
-      el('a', { class: 'btn btn--ghost', href: 'index.html#commission', text: 'Rebuild this program' }),
+      el('a', { class: 'btn btn--ghost', href: 'index.html#commission', text: 'Rebuild this plan' }),
       el('button', {
-        class: 'btn btn--ghost', type: 'button', text: 'Delete program and progress',
+        class: 'btn btn--ghost', type: 'button', text: 'Delete plan and progress',
         onclick: function () {
-          if (confirm('Delete the saved program and all logged progress from this browser? This cannot be undone.')) {
+          if (confirm('Delete this plan and everything you have logged against it? There is no undo.')) {
             window.Store.clearProgram();
             location.href = 'index.html#commission';
           }
@@ -727,7 +791,7 @@
     ]));
     wrap.appendChild(el('p', {
       class: 'tiny muted', style: 'margin-top:1rem',
-      text: 'Rebuilding with different inputs replaces this program. Export first if you want to keep it.'
+      text: 'Rebuilding with different numbers replaces this plan. Export it first if you want to keep it.'
     }));
     sec.appendChild(wrap);
     root.appendChild(sec);
@@ -742,10 +806,10 @@
     wrap.appendChild(el('h1', { style: 'font-size:clamp(2rem,5vw,3rem)', text: 'Nothing here yet.' }));
     wrap.appendChild(el('p', {
       class: 'lede', style: 'margin-top:1rem',
-      text: 'Programs are stored in this browser only — nothing is kept on a server. Commission one and it will appear here, dated and ready to run.'
+      text: 'Plans are stored in this browser and nowhere else. Build one and it will show up here, dated and ready to run.'
     }));
     wrap.appendChild(el('div', { class: 'btn-row', style: 'margin-top:2rem' }, [
-      el('a', { class: 'btn', href: 'index.html#commission', text: 'Commission a program' }),
+      el('a', { class: 'btn', href: 'index.html#commission', text: 'Build a plan' }),
       el('a', { class: 'btn btn--ghost', href: 'index.html#disciplines', text: 'Browse disciplines' })
     ]));
     root.appendChild(wrap);
@@ -773,7 +837,7 @@
   document.addEventListener('DOMContentLoaded', function () {
     program = window.Store.loadProgram();
     if (program) {
-      document.title = program.discipline.name + ' program — Skill Trainer';
+      document.title = program.discipline.name + ' plan · Skill Trainer';
       progress = window.Store.getProgress(program.id);
     }
     render();

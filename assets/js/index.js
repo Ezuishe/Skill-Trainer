@@ -260,7 +260,7 @@
       if (window.Store.saveProgram(program)) {
         location.href = 'program.html';
       } else {
-        window.App.toast('Could not save — this browser is blocking local storage.');
+        window.App.toast('Could not save. This browser is blocking local storage.');
       }
     });
     var reset = document.getElementById('reset-form');
