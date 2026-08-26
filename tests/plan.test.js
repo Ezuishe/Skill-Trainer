@@ -13,6 +13,7 @@ var root = path.join(__dirname, '..', 'assets', 'js');
   .forEach(function (f) { require(path.join(root, 'data', f)); });
 require(path.join(root, 'data', 'dispatch.js'));
 require(path.join(root, 'engine.js'));
+require(path.join(root, 'stats.js'));
 require(path.join(root, 'dispatch-core.js'));
 
 var fails = 0;
@@ -184,6 +185,91 @@ check('tiny program cut scope', tiny.scope.dropped.length > 0);
 var huge = Planner.build({ disciplineId: 'learning-velocity', weeks: 156, hoursPerWeek: 40, daysPerWeek: 6, level: 'advanced' });
 check('huge program reaches elite', huge.verdict.reachedKey === 'elite', String(huge.verdict.reachedKey));
 check('elite has no next lever', huge.verdict.levers.length === 0);
+
+/* --- retention stats --------------------------------------------------- */
+
+function blankProgress(id) { return { id: id, sessions: {}, gates: {}, logs: [], hours: 0 }; }
+
+var sp = Planner.build({
+  disciplineId: 'negotiation', weeks: 12, hoursPerWeek: 8, daysPerWeek: 4,
+  level: 'novice', startDate: '2026-08-24'
+});
+var NOW = new Date(2026, 8, 16); // Wed 16 Sep 2026
+
+/* empty state */
+var s0 = Stats.build(sp, blankProgress(sp.id), NOW);
+check('empty: no hours banked', s0.ladder.logged === 0, String(s0.ladder.logged));
+check('empty: streak zero', s0.streak.weeks === 0, String(s0.streak.weeks));
+check('empty: momentum is new', s0.momentum.state === 'new', s0.momentum.state);
+check('empty: has a next marker', !!s0.markers.next);
+check('empty: ladder targets functional first',
+  s0.ladder.next && s0.ladder.next.key === 'functional', s0.ladder.next && s0.ladder.next.key);
+check('empty: pct is 0', s0.ladder.pct === 0, String(s0.ladder.pct));
+
+/* a person who logged something in each of the last three weeks */
+var p3 = blankProgress(sp.id);
+['2026-09-16', '2026-09-08', '2026-09-01'].forEach(function (d, i) {
+  p3.sessions['w' + (i + 1) + 'd1'] = d;
+});
+p3.hours = 12;
+var s3 = Stats.build(sp, p3, NOW);
+check('three active weeks = streak 3', s3.streak.weeks === 3, String(s3.streak.weeks));
+check('logged hours surface', s3.ladder.logged === 12, String(s3.ladder.logged));
+check('momentum today when logged today', s3.momentum.state === 'today', s3.momentum.state);
+check('10h marker earned', s3.markers.earned.some(function (m) { return /10 hours/.test(m.label); }));
+
+/* a gap: last session 20 days ago should not claim a streak */
+var pLapsed = blankProgress(sp.id);
+pLapsed.sessions['w1d1'] = '2026-08-27';
+pLapsed.hours = 2;
+var sL = Stats.build(sp, pLapsed, NOW);
+check('lapsed: streak broken', sL.streak.weeks === 0, String(sL.streak.weeks));
+check('lapsed: state lapsed', sL.momentum.state === 'lapsed', sL.momentum.state);
+check('lapsed: copy is recovery not scolding',
+  /Restarting costs one session/.test(sL.momentum.line), sL.momentum.line);
+
+/* current week empty must not break a streak that ran until last week */
+var pGrace = blankProgress(sp.id);
+pGrace.sessions['w1d1'] = '2026-09-10'; // previous week
+pGrace.sessions['w1d2'] = '2026-09-03';
+pGrace.hours = 4;
+var sG = Stats.build(sp, pGrace, NOW);
+check('quiet current week keeps prior streak', sG.streak.weeks === 2, String(sG.streak.weeks));
+
+/* crossing a threshold moves the level */
+var pBig = blankProgress(sp.id);
+pBig.sessions['w1d1'] = '2026-09-16';
+pBig.hours = sp.discipline.hours.functional + 5;
+var sB = Stats.build(sp, pBig, NOW);
+check('crossing functional sets current level',
+  sB.ladder.current && sB.ladder.current.key === 'functional',
+  sB.ladder.current && sB.ladder.current.key);
+check('next target becomes competent',
+  sB.ladder.next && sB.ladder.next.key === 'competent', sB.ladder.next && sB.ladder.next.key);
+check('reached-level marker present',
+  sB.markers.earned.some(function (m) { return /Reached functional/.test(m.label); }));
+
+/* pct stays bounded whatever the hours */
+[0, 1, 50, 5000, 100000].forEach(function (h) {
+  var pp = blankProgress(sp.id); pp.hours = h;
+  var ss = Stats.build(sp, pp, NOW);
+  check('pct bounded at ' + h + 'h', ss.ladder.pct >= 0 && ss.ladder.pct <= 100, String(ss.ladder.pct));
+  check('remaining never negative at ' + h + 'h', ss.ladder.remaining >= 0, String(ss.ladder.remaining));
+});
+
+/* stats must survive every discipline and a prior-experience credit */
+DISCIPLINES.forEach(function (d) {
+  var pr = Planner.build({
+    disciplineId: d.id, weeks: 8, hoursPerWeek: 6, daysPerWeek: 4,
+    level: 'advanced', startDate: '2026-08-24'
+  });
+  var st = Stats.build(pr, blankProgress(pr.id), NOW);
+  check(d.id + ' stats build', !!st.ladder && !!st.momentum.line);
+  check(d.id + ' banked credit counted', st.ladder.effective >= st.ladder.banked);
+  check(d.id + ' sessionsToNext sane',
+    st.ladder.sessionsToNext >= 0 && st.ladder.sessionsToNext < 100000,
+    String(st.ladder.sessionsToNext));
+});
 
 /* --- dispatch determinism --------------------------------------------- */
 var a = DispatchCore.entryFor('stoic', new Date(2026, 7, 25));

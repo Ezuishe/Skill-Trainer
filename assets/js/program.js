@@ -60,6 +60,108 @@
     };
   }
 
+  /* -------------------------------------------------------------- status */
+
+  /* The panel a returning user lands on. Hours banked against the next level
+     is the headline, because that is the number the rest of the site is built
+     on and it is earned rather than awarded. */
+  function renderStatus() {
+    var st = window.Stats.build(program, progress, new Date());
+    var l = st.ladder;
+
+    var panel = el('div', { class: 'status', 'data-state': st.momentum.state });
+
+    /* Headline: the credits bar. */
+    var head = el('div', { class: 'status__head' }, [
+      el('div', {}, [
+        el('span', { class: 'eyebrow', style: 'margin-bottom:0.35rem', text: 'Hours banked' }),
+        el('div', { class: 'status__figure' }, [
+          el('span', { class: 'status__now', text: String(l.effective) }),
+          el('span', { class: 'status__of', text: ' of ' + l.target + ' h' }),
+          l.next
+            ? el('span', { class: 'status__goal', text: ' to ' + l.next.label.toLowerCase() })
+            : el('span', { class: 'status__goal', text: ' — top of the ladder' })
+        ])
+      ]),
+      el('div', { class: 'status__pct mono', text: l.pct + '%' })
+    ]);
+    panel.appendChild(head);
+
+    panel.appendChild(el('div', { class: 'meter meter--lg' }, [
+      el('div', { class: 'meter__credit', style: 'width:' + l.creditedPct + '%' }),
+      el('div', { class: 'meter__fill', style: 'width:' + l.pct + '%' })
+    ]));
+
+    if (l.creditedPct > 0 && l.logged === 0) {
+      panel.appendChild(el('p', {
+        class: 'tiny muted', style: 'margin:0.5rem 0 0',
+        text: 'The pale part is the experience you told us you already had. The solid part is ' +
+          'what you log from here.'
+      }));
+    }
+
+    panel.appendChild(el('p', { class: 'tiny muted', style: 'margin:0.6rem 0 0' }, [
+      document.createTextNode(
+        l.logged + ' h logged by you' +
+        (l.banked ? ' · ' + l.banked + ' h credited for prior experience' : '')
+      ),
+      l.next
+        ? el('span', { text: ' · ' + l.sessionsToNext + ' more sessions at this length' })
+        : null
+    ]));
+
+    /* Three things that change between visits. */
+    var row = el('div', { class: 'status__row' });
+
+    row.appendChild(el('div', { class: 'status__cell' }, [
+      el('span', { class: 'status__label', text: 'This week' }),
+      el('span', { class: 'status__value', text: st.week.inPlan ? st.week.done + '/' + st.week.total : '—' }),
+      el('div', { class: 'meter meter--sm' }, [
+        el('div', { class: 'meter__fill', style: 'width:' + (st.week.inPlan ? st.week.pct : 0) + '%' })
+      ])
+    ]));
+
+    row.appendChild(el('div', { class: 'status__cell' }, [
+      el('span', { class: 'status__label', text: 'Week streak' }),
+      el('span', { class: 'status__value', text: String(st.streak.weeks) }),
+      el('span', { class: 'tiny muted', text: st.streak.weeks === 1 ? 'week running' : 'weeks running' })
+    ]));
+
+    row.appendChild(el('div', { class: 'status__cell' }, [
+      el('span', { class: 'status__label', text: 'Gates' }),
+      el('span', { class: 'status__value', text: st.totals.gatesDone + '/' + st.totals.gateCriteria }),
+      el('span', { class: 'tiny muted', text: 'criteria passed' })
+    ]));
+
+    row.appendChild(el('div', { class: 'status__cell' }, [
+      el('span', { class: 'status__label', text: 'Sessions' }),
+      el('span', { class: 'status__value', text: st.totals.done + '/' + st.totals.sessions }),
+      el('span', { class: 'tiny muted', text: st.totals.pct + '% of the plan' })
+    ]));
+
+    panel.appendChild(row);
+
+    /* Where you stand, said plainly. */
+    panel.appendChild(el('p', { class: 'status__momentum', text: st.momentum.line }));
+
+    /* What you have actually reached, and the next one along. */
+    if (st.markers.earned.length || st.markers.next) {
+      var marks = el('div', { class: 'status__markers' });
+      st.markers.earned.forEach(function (m) {
+        marks.appendChild(el('span', { class: 'marker', text: m.label }));
+      });
+      if (st.markers.next) {
+        marks.appendChild(el('span', {
+          class: 'marker marker--next',
+          text: st.markers.next.label + ' · ' + st.markers.next.remaining + ' h to go'
+        }));
+      }
+      panel.appendChild(marks);
+    }
+
+    return panel;
+  }
+
   /* ---------------------------------------------------------------- head */
 
   function renderHead(root) {
@@ -107,26 +209,7 @@
         program.levelLabel.toLowerCase()
     }));
 
-    /* progress */
-    var bar = el('div', { style: 'margin-top:2rem' }, [
-      el('div', {
-        class: 'small',
-        style: 'display:flex;justify-content:space-between;margin-bottom:0.4rem'
-      }, [
-        el('span', { text: 'Progress · ' + t.done + ' of ' + t.sessions + ' sessions logged' }),
-        el('span', { class: 'mono', text: t.pct + '%' })
-      ]),
-      el('div', { class: 'meter' }, [
-        el('div', { class: 'meter__fill', style: 'width:' + t.pct + '%' })
-      ]),
-      el('p', {
-        class: 'tiny muted',
-        style: 'margin-top:0.5rem',
-        text: progress.hours + ' hours logged · ' + t.gatesDone + ' of ' + t.gateCriteria +
-          ' gate criteria passed'
-      })
-    ]);
-    sec.appendChild(bar);
+    sec.appendChild(renderStatus());
 
     var actions = el('div', { class: 'btn-row no-print', style: 'margin-top:2rem' }, [
       el('button', {

@@ -131,6 +131,23 @@ function watch(page, label) {
   const setupSection = await page.locator('h2:has-text("Before week 1")').count();
   if (!setupSection) problems.push('Before week 1 section missing');
 
+  // retention: the status panel must show earned numbers, not decoration
+  const statusPanel = await page.locator('.status').count();
+  if (!statusPanel) problems.push('status panel missing');
+  const statusText = await page.locator('.status').innerText();
+  console.log('status panel:', statusText.replace(/\n/g, ' | ').slice(0, 200));
+  // CSS uppercases these labels, so compare case-insensitively.
+  const statusLower = statusText.toLowerCase();
+  for (const label of ['hours banked', 'this week', 'week streak', 'gates', 'sessions']) {
+    if (!statusLower.includes(label)) problems.push(`status panel missing "${label}"`);
+  }
+  const markers = await page.locator('.status .marker').count();
+  if (markers < 1) problems.push('no progress markers rendered');
+
+  // credited prior experience must be visually separated from logged work
+  const creditSeg = await page.locator('.status .meter__credit').count();
+  if (!creditSeg) problems.push('credited-hours segment missing from the bar');
+
   // stages and mistakes should be present on the phase view
   const stageCount = await page.locator('.stage').count();
   const mistakeCount = await page.locator('.drill__mistake').count();
@@ -153,14 +170,24 @@ function watch(page, label) {
   await page.waitForTimeout(300);
   await page.locator('.gate .check input').first().check();
   await page.waitForTimeout(300);
-  const beforeReload = await page.locator('.meter__fill').getAttribute('style');
+  const beforeReload = await page.locator('.status .meter--lg .meter__fill').first().getAttribute('style');
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForTimeout(500);
-  const afterReload = await page.locator('.meter__fill').getAttribute('style');
+  const afterReload = await page.locator('.status .meter--lg .meter__fill').first().getAttribute('style');
   console.log('progress meter before/after reload:', beforeReload, '/', afterReload);
   if (beforeReload !== afterReload) problems.push('progress did not persist across reload');
   const checkedNow = await page.locator('.gate .check input:checked').count();
   if (checkedNow < 1) problems.push('gate criterion did not persist');
+
+  // ticking a session must move the banked-hours bar, not just the session count
+  const bankedBefore = await page.locator('.status__now').innerText();
+  await page.locator('.week .session input[type="checkbox"]').nth(1).check();
+  await page.waitForTimeout(400);
+  const bankedAfter = await page.locator('.status__now').innerText();
+  console.log('banked hours before/after logging a session:', bankedBefore, '->', bankedAfter);
+  if (bankedBefore === bankedAfter && Number(bankedAfter) === 0) {
+    problems.push('logging a session did not change banked hours');
+  }
 
   // log entry
   await page.locator('#log-input').fill('Practised anchoring aloud, 5 reps.\nHard: dropped the number twice.\nNext: record it.');

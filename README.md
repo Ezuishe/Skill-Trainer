@@ -49,6 +49,33 @@ Every pillar carries:
 - **study / make** (in `data/sessions-*.js`) — the actual step-by-step work for
   acquire and produce sessions, each `make` ending in a "done when" test
 
+## Coming back
+
+A plan you read once is a plan you abandon. The program page opens on a status
+panel built from work you actually logged:
+
+- **Hours banked** against the threshold the site quoted you at the start, as
+  the headline bar. Hours credited for prior experience are drawn in a paler
+  tone behind the hours you logged, so the bar never claims you did work you
+  did not do.
+- **This week**, **week streak**, **gate criteria passed**, **sessions done**.
+- A plain line on where you stand, and markers for what you have reached with
+  the next one along.
+
+Streaks are counted in weeks, not days: plans schedule four or five sessions a
+week, so a day streak would break by design and punish someone following the
+plan correctly. A quiet current week does not break the streak until it is over.
+
+Lapse copy is recovery, not scolding. One miss says one miss is noise. A
+fortnight says restarting costs one session rather than the whole plan.
+
+The landing page shows a resume card when a plan exists, so a returning visitor
+lands on their next session rather than an empty form.
+
+Nothing here is awarded for opening the page, and nothing animates. `stats.js`
+is pure and tested: streak arithmetic, the grace week, threshold crossings and
+bar bounds all have cases in `plan.test.js`.
+
 ## Running it
 
 It is a static site with no build step and no dependencies. Open `index.html`
@@ -98,6 +125,7 @@ assets/js/data/dispatch.js       6 traditions × 12 entries
 assets/js/engine.js              the planner: verdict, scope, phases, schedule, exports
 assets/js/dispatch-core.js       deterministic date-based selection
 assets/js/store.js               localStorage persistence
+assets/js/stats.js               streaks, hours banked, momentum (pure, tested)
 assets/js/app.js                 theme, toasts, download/copy helpers
 assets/js/index.js               catalog + commission form + live preview
 assets/js/program.js             program rendering, progress, gates, log

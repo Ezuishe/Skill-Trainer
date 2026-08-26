@@ -284,6 +284,62 @@
     }
   }
 
+  /* ------------------------------------------------------------- resume */
+
+  /* A returning visitor should land on where they got to, not on an empty
+     form. Only rendered when a plan already exists in this browser. */
+  function renderResume(existing) {
+    var host = document.getElementById('resume-slot');
+    if (!host || !existing) return;
+
+    var progress = window.Store.getProgress(existing.id);
+    var st = window.Stats.build(existing, progress, new Date());
+
+    /* Find today's session, or the next one. */
+    var now = new Date();
+    var next = null;
+    for (var i = 0; i < existing.schedule.length && !next; i++) {
+      var wk = existing.schedule[i];
+      for (var j = 0; j < wk.sessions.length; j++) {
+        var sn = wk.sessions[j];
+        var done = progress.sessions['w' + wk.number + 'd' + sn.day];
+        if (!done && sn.date >= new Date(now.getFullYear(), now.getMonth(), now.getDate())) {
+          next = { week: wk, session: sn }; break;
+        }
+      }
+    }
+
+    var card = el('div', { class: 'resume' }, [
+      el('div', {}, [
+        el('span', { class: 'eyebrow', style: 'margin-bottom:0.2rem', text: 'Your plan · ' + existing.discipline.name }),
+        el('p', {
+          class: 'resume__what',
+          text: next ? next.session.title : 'Every session is logged. Score the gates.'
+        }),
+        el('p', { class: 'resume__meta' }, [
+          document.createTextNode(
+            next
+              ? next.session.type.label + ' · ' + window.Planner.fmtDate(next.session.date) +
+                ' · ' + next.session.hours + ' h'
+              : 'Plan complete'
+          ),
+          el('span', {
+            text: '  ·  ' + st.ladder.effective + ' of ' + st.ladder.target + ' h banked' +
+              (st.ladder.next ? ' toward ' + st.ladder.next.label.toLowerCase() : '') +
+              '  ·  ' + st.streak.weeks + ' week streak'
+          })
+        ]),
+        el('div', { class: 'meter meter--sm', style: 'margin-top:0.75rem;max-width:24rem' }, [
+          el('div', { class: 'meter__fill', style: 'width:' + st.ladder.pct + '%' })
+        ])
+      ]),
+      el('div', { class: 'btn-row' }, [
+        el('a', { class: 'btn', href: 'program.html', text: next ? 'Open today\u2019s session' : 'Open my plan' })
+      ])
+    ]);
+    host.appendChild(card);
+  }
+
   /* ------------------------------------------------------------- teaser */
 
   function renderTeaser() {
@@ -323,6 +379,7 @@
       state.level = existing.input.level;
     }
 
+    renderResume(existing);
     fillStats();
     renderCatalog();
     fillSelect();
