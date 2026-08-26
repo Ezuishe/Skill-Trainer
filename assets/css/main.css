@@ -1149,6 +1149,145 @@ input[type='range']::-moz-range-thumb {
 
 .marker--next::before { content: '\00a0'; }
 
+/* --------------------------------------------------------------- runsheet */
+
+.runsheet {
+  margin-top: var(--s5);
+  border-top: 1px solid var(--rule);
+  padding-top: var(--s4);
+}
+
+.runsheet__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s3);
+}
+
+.rs {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  gap: var(--s4);
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--rule);
+  position: relative;
+}
+
+.rs:last-of-type { border-bottom: 0; }
+
+.rs__time { display: flex; flex-direction: column; gap: 0.1rem; padding-top: 0.1rem; }
+.rs__from { font-size: 0.82rem; color: var(--ink); font-variant-numeric: tabular-nums; }
+.rs__dur { font-size: 0.68rem; color: var(--ink-3); }
+
+.rs__label { font-size: 0.9rem; font-weight: 500; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem; }
+.rs__detail { margin: 0.2rem 0 0; font-size: 0.85rem; color: var(--ink-2); line-height: 1.5; }
+
+.rs__dose {
+  font-size: 0.68rem;
+  color: var(--accent);
+  border: 1px solid var(--rule-strong);
+  padding: 0 0.35rem;
+  border-radius: 2px;
+}
+
+.rs__cut {
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--caution);
+}
+
+/* The opening and closing bands are scaffolding, not the work. */
+.rs[data-kind='open'] .rs__label,
+.rs[data-kind='close'] .rs__label { color: var(--ink-2); font-weight: 400; }
+.rs[data-kind='work'] { box-shadow: inset 2px 0 0 var(--accent-wash); padding-left: 0.5rem; }
+
+@media (max-width: 620px) {
+  .rs { grid-template-columns: 4.5rem 1fr; gap: var(--s3); }
+}
+
+/* ----------------------------------------------------------------- record */
+
+.record {
+  margin-top: var(--s5);
+  border-top: 1px solid var(--rule);
+  padding-top: var(--s4);
+  display: grid;
+  gap: var(--s4);
+}
+
+.record__done { border-bottom: 0; padding: 0; }
+.record__field { display: grid; gap: 0.35rem; }
+.record__label { font-size: 0.85rem; font-weight: 600; }
+
+.scale { display: flex; gap: var(--s2); flex-wrap: wrap; }
+
+.scale__btn {
+  width: 2.6rem; height: 2.6rem;
+  border: 1px solid var(--rule-strong);
+  background: var(--surface);
+  color: var(--ink-2);
+  border-radius: 2px;
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.scale__btn:hover { border-color: var(--ink-3); color: var(--ink); }
+
+.scale__btn[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.evidence__list { display: grid; gap: 0.4rem; }
+
+.evidence__item {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 0.4rem 0.6rem;
+  background: var(--surface);
+}
+
+.evidence__name { font-size: 0.85rem; flex: 1; min-width: 8rem; word-break: break-all; }
+.evidence__meta { color: var(--ink-3); }
+
+/* ------------------------------------------------------------ calibration */
+
+.calib {
+  margin-top: var(--s4);
+  padding: var(--s3) var(--s4);
+  border-left: 3px solid var(--rule-strong);
+  background: var(--surface-2);
+  border-radius: 2px;
+}
+
+.calib[data-state='too-easy'] { border-left-color: var(--caution); }
+.calib[data-state='too-hard'] { border-left-color: var(--accent); }
+.calib[data-state='in-band'] { border-left-color: var(--positive); }
+.calib[data-state='plateau'] { border-left-color: var(--caution); }
+
+.calib__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s3); }
+
+.calib__trend {
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  color: var(--ink-3);
+}
+
+.calib__trend[data-dir='up'] { color: var(--positive); border-color: var(--positive); }
+.calib__trend[data-dir='down'] { color: var(--accent); border-color: var(--accent); }
+
 /* ------------------------------------------------------------- transcript */
 
 .transcript__standing {

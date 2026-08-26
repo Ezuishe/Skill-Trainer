@@ -249,6 +249,118 @@ DISCIPLINES.forEach(function (d) {
   });
 });
 
+/* --- runsheets ---------------------------------------------------------- */
+
+DISCIPLINES.forEach(function (d) {
+  [[7, 4], [2, 3], [20, 5]].forEach(function (cfg) {
+    var rp = Planner.build({
+      disciplineId: d.id, weeks: 10, hoursPerWeek: cfg[0], daysPerWeek: cfg[1],
+      level: 'novice', startDate: '2026-08-24'
+    });
+    rp.schedule.forEach(function (w) {
+      w.sessions.forEach(function (sn) {
+        var r = sn.runsheet;
+        check('session has a runsheet ' + d.id, !!r && r.rows.length >= 3);
+        var sum = r.rows.reduce(function (a, row) { return a + row.minutes; }, 0);
+        check('runsheet sums to the session ' + d.id, sum === sn.minutes, sum + ' vs ' + sn.minutes);
+        check('runsheet total matches', r.total === sn.minutes);
+        r.rows.forEach(function (row) {
+          check('runsheet row has time', row.minutes >= 1, String(row.minutes));
+          check('runsheet row has a label', !!row.label);
+          check('runsheet row has detail', !!row.detail && row.detail.length > 5);
+          check('runsheet row has a clock window', /^\d+:\d\d$/.test(row.from) && /^\d+:\d\d$/.test(row.to),
+            row.from + '-' + row.to);
+        });
+        /* Clock windows must be contiguous and start at zero. */
+        check('runsheet starts at 0:00 ' + d.id, r.rows[0].from === '0:00', r.rows[0].from);
+        var opens = r.rows.filter(function (row) { return row.kind === 'open'; }).length;
+        var closes = r.rows.filter(function (row) { return row.kind === 'close'; }).length;
+        check('exactly one opening band', opens === 1, String(opens));
+        check('exactly one closing band', closes === 1, String(closes));
+        /* Every step must appear as its own row. */
+        if (sn.steps && sn.steps.length) {
+          var workRows = r.rows.filter(function (row) { return row.kind === 'work'; });
+          check('one row per step ' + d.id, workRows.length === sn.steps.length,
+            workRows.length + ' vs ' + sn.steps.length);
+        }
+      });
+    });
+
+    /* The first session must not tell you to recall a previous one. */
+    var f = rp.schedule[0].sessions[0].runsheet;
+    check('first session runsheet sets up ' + d.id, /Set up/.test(f.rows[0].label), f.rows[0].label);
+    check('first session runsheet has no recall',
+      !/last session|previous session/i.test(f.rows[0].detail), f.rows[0].detail.slice(0, 50));
+  });
+});
+
+/* Step weighting must actually differentiate. */
+check('a heavy step outweighs a bookkeeping step',
+  Planner.stepWeight('Record five minutes, watch it back and repeat until under two per minute.').weight >
+  Planner.stepWeight('Note the date.').weight);
+check('bookkeeping is classified as capture',
+  Planner.stepWeight('Note the date.').rule === 'capture',
+  Planner.stepWeight('Note the date.').rule);
+
+/* --- calibration -------------------------------------------------------- */
+
+function calProgress(prog, n, score, difficulty) {
+  var pr = { id: prog.id, sessions: {}, gates: {}, logs: [], hours: 0, records: {} };
+  var i = 0;
+  prog.schedule.forEach(function (w) {
+    w.sessions.forEach(function (sn) {
+      if (i >= n) return;
+      var k = 'w' + w.number + 'd' + sn.day;
+      pr.sessions[k] = '2026-09-01';
+      pr.records[k] = {
+        score: typeof score === 'function' ? score(i) : score,
+        difficulty: typeof difficulty === 'function' ? difficulty(i) : difficulty
+      };
+      i++;
+    });
+  });
+  return pr;
+}
+
+var cp = Planner.build({
+  disciplineId: 'speaking-presence', weeks: 12, hoursPerWeek: 7, daysPerWeek: 4,
+  level: 'novice', startDate: '2026-08-24'
+});
+
+var calEmpty = Stats.calibration(cp, { records: {} });
+check('no calibration verdict without data', calEmpty.verdict === null);
+check('no plateau without data', calEmpty.plateau === null);
+check('calibration count starts at zero', calEmpty.count === 0);
+
+var calEasy = Stats.calibration(cp, calProgress(cp, 6, 4, 'easy'));
+check('all-easy is flagged too easy', calEasy.verdict.state === 'too-easy', calEasy.verdict.state);
+check('too-easy advice says raise it', /Raise the difficulty/.test(calEasy.verdict.line));
+
+var calHard = Stats.calibration(cp, calProgress(cp, 6, 2, 'hard'));
+check('all-hard is flagged too hard', calHard.verdict.state === 'too-hard', calHard.verdict.state);
+
+var calMixed = Stats.calibration(cp, calProgress(cp, 6, 3, function (i) {
+  return ['right', 'right', 'easy', 'right', 'hard', 'right'][i % 6];
+}));
+check('a mixed run sits in band', calMixed.verdict.state === 'in-band', calMixed.verdict.state);
+
+var calTwo = Stats.calibration(cp, calProgress(cp, 2, 3, 'easy'));
+check('two sessions is not enough to judge difficulty', calTwo.verdict === null);
+
+var calFlat = Stats.calibration(cp, calProgress(cp, 12, 3, 'right'));
+check('a flat run flags a plateau', !!calFlat.plateau);
+check('flat trend is flat', calFlat.trend.direction === 'flat', calFlat.trend.direction);
+
+var calUp = Stats.calibration(cp, calProgress(cp, 12, function (i) { return i < 6 ? 2 : 5; }, 'right'));
+check('an improving run does not flag a plateau', calUp.plateau === null);
+check('improving trend is up', calUp.trend.direction === 'up', calUp.trend.direction);
+
+var calDown = Stats.calibration(cp, calProgress(cp, 12, function (i) { return i < 6 ? 5 : 2; }, 'right'));
+check('a falling trend is detected', calDown.trend.direction === 'down', calDown.trend.direction);
+
+check('means are bounded 1-5',
+  calUp.recentMean >= 1 && calUp.recentMean <= 5, String(calUp.recentMean));
+
 /* --- credits and transcript -------------------------------------------- */
 
 var tp = Planner.build({

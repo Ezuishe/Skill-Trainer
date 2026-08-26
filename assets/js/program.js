@@ -25,6 +25,14 @@
     return wrap;
   }
 
+  /* "2.17 hours" is not how anyone describes a session. */
+  function fmtDuration(mins) {
+    if (mins < 60) return mins + ' min';
+    var h = Math.floor(mins / 60);
+    var m = mins % 60;
+    return m ? h + 'h ' + m + 'm' : h + ' h';
+  }
+
   function sessionKey(week, session) { return 'w' + week.number + 'd' + session.day; }
   function gateKey(phase, i) { return 'p' + phase.index + 'c' + i; }
 
@@ -150,6 +158,33 @@
     /* Where you stand, said plainly. */
     panel.appendChild(el('p', { class: 'status__momentum', text: st.momentum.line }));
 
+    /* What your own scores say about how the practice is pitched. */
+    var cal = st.calibration;
+    if (cal.verdict) {
+      panel.appendChild(el('div', { class: 'calib', 'data-state': cal.verdict.state }, [
+        el('div', { class: 'calib__head' }, [
+          el('span', { class: 'eyebrow', style: 'margin:0', text: 'Difficulty check' }),
+          cal.recentMean !== null
+            ? el('span', { class: 'mono tiny muted', text: 'mean score ' + cal.recentMean + '/5 over the last ' + Math.min(5, cal.count) })
+            : null,
+          cal.trend
+            ? el('span', {
+                class: 'calib__trend',
+                'data-dir': cal.trend.direction,
+                text: cal.trend.direction === 'up' ? 'improving' : (cal.trend.direction === 'down' ? 'falling' : 'flat')
+              })
+            : null
+        ]),
+        el('p', { class: 'small', style: 'margin:0.4rem 0 0', text: cal.verdict.line })
+      ]));
+    }
+    if (cal.plateau) {
+      panel.appendChild(el('div', { class: 'calib', 'data-state': 'plateau' }, [
+        el('span', { class: 'eyebrow', style: 'margin:0', text: 'Plateau' }),
+        el('p', { class: 'small', style: 'margin:0.4rem 0 0', text: cal.plateau.line })
+      ]));
+    }
+
     /* What you have actually reached, and the next one along. */
     if (st.markers.earned.length || st.markers.next) {
       var marks = el('div', { class: 'status__markers' });
@@ -211,7 +246,7 @@
       class: 'small muted',
       style: 'margin-top:1rem',
       text: P.fmtDate(program.startDate) + ' → ' + P.fmtDate(program.endDate) +
-        ' · ' + program.sessionLength + ' h × ' + i.daysPerWeek + ' sessions/week · starting from: ' +
+        ' · ' + i.daysPerWeek + ' sessions/week · starting from: ' +
         program.levelLabel.toLowerCase()
     }));
 
@@ -308,6 +343,215 @@
     root.appendChild(sec);
   }
 
+  /* ------------------------------------------------------------ runsheet */
+
+  function renderRunsheet(s) {
+    var r = s.runsheet;
+    var box = el('div', { class: 'runsheet' });
+    box.appendChild(el('div', { class: 'runsheet__head' }, [
+      el('span', { class: 'eyebrow', style: 'margin:0', text: 'Run sheet' }),
+      el('span', { class: 'mono tiny muted', text: r.total + ' min · ' + r.rows.length + ' blocks' })
+    ]));
+
+    r.rows.forEach(function (row) {
+      box.appendChild(el('div', { class: 'rs', 'data-kind': row.kind }, [
+        el('div', { class: 'rs__time mono' }, [
+          el('span', { class: 'rs__from', text: row.from }),
+          el('span', { class: 'rs__dur', text: row.minutes + ' min' })
+        ]),
+        el('div', { class: 'rs__body' }, [
+          el('div', { class: 'rs__label' }, [
+            document.createTextNode(row.label),
+            row.dose ? el('span', { class: 'rs__dose mono', text: row.dose }) : null,
+            row.cutFirst ? el('span', { class: 'rs__cut', text: 'cut this first if short' }) : null
+          ]),
+          el('p', { class: 'rs__detail', text: row.detail })
+        ])
+      ]));
+    });
+
+    box.appendChild(el('p', { class: 'tiny muted', style: 'margin:0.75rem 0 0', text: r.note }));
+    return box;
+  }
+
+  /* -------------------------------------------------------------- record */
+
+  /* What happened, in your own judgement, plus whatever proves it. Difficulty
+     feeds the calibration advice; evidence is what lets you compare week one
+     with week twelve. */
+  function renderRecord(w, s) {
+    var key = sessionKey(w, s);
+    var rec = window.Store.getRecord(program.id, key);
+    var done = !!progress.sessions[key];
+
+    var box = el('div', { class: 'record', 'data-done': String(done) });
+    box.appendChild(el('span', { class: 'eyebrow', text: 'Record the session' }));
+
+    /* Done */
+    box.appendChild(el('label', { class: 'check record__done' }, [
+      el('input', {
+        type: 'checkbox',
+        checked: done ? 'checked' : null,
+        onchange: function () {
+          progress = window.Store.toggleSession(program.id, key, s.hours);
+          render();
+        }
+      }),
+      el('span', { text: done ? 'Done, and logged.' : 'Mark this session done' })
+    ]));
+
+    /* Score */
+    var scoreRow = el('div', { class: 'record__field' }, [
+      el('span', { class: 'record__label', text: 'How did it go?' }),
+      el('span', { class: 'tiny muted', text: '1 = fell apart · 5 = better than expected' })
+    ]);
+    var scores = el('div', { class: 'scale' });
+    [1, 2, 3, 4, 5].forEach(function (n) {
+      scores.appendChild(el('button', {
+        class: 'scale__btn', type: 'button',
+        'aria-pressed': String(rec.score === n),
+        text: String(n),
+        onclick: function () {
+          window.Store.setRecord(program.id, key, { score: rec.score === n ? null : n });
+          render();
+        }
+      }));
+    });
+    scoreRow.appendChild(scores);
+    box.appendChild(scoreRow);
+
+    /* Difficulty */
+    var diffRow = el('div', { class: 'record__field' }, [
+      el('span', { class: 'record__label', text: 'How hard was it?' }),
+      el('span', { class: 'tiny muted', text: 'Aim to be getting it wrong about a third of the time' })
+    ]);
+    var diffs = el('div', { class: 'choice-row' });
+    [
+      ['easy', 'Too easy', 'I got nearly all of it right'],
+      ['right', 'About right', 'Some of it went wrong'],
+      ['hard', 'Too hard', 'I got almost none of it']
+    ].forEach(function (d) {
+      diffs.appendChild(el('button', {
+        class: 'choice', type: 'button',
+        'aria-pressed': String(rec.difficulty === d[0]),
+        onclick: function () {
+          window.Store.setRecord(program.id, key, { difficulty: rec.difficulty === d[0] ? null : d[0] });
+          render();
+        }
+      }, [
+        document.createTextNode(d[1]),
+        el('small', { text: d[2] })
+      ]));
+    });
+    diffRow.appendChild(diffs);
+    box.appendChild(diffRow);
+
+    /* Evidence */
+    box.appendChild(renderEvidence(key, s));
+
+    /* Note */
+    var noteField = el('div', { class: 'record__field' }, [
+      el('span', { class: 'record__label', text: 'Note' })
+    ]);
+    var note = el('textarea', {
+      placeholder: 'What was hard, and what you will change next time.',
+      style: 'min-height:4rem'
+    });
+    note.value = rec.note || '';
+    note.addEventListener('change', function () {
+      window.Store.setRecord(program.id, key, { note: note.value.trim() || null });
+      window.App.toast('Note saved.');
+    });
+    noteField.appendChild(note);
+    box.appendChild(noteField);
+
+    return box;
+  }
+
+  function renderEvidence(key, s) {
+    var field = el('div', { class: 'record__field' }, [
+      el('span', { class: 'record__label', text: 'Evidence' }),
+      el('span', {
+        class: 'tiny muted',
+        text: s.check
+          ? 'What shows this is done: ' + s.check
+          : 'A recording, a draft, a screenshot. Whatever you could compare against in ten weeks.'
+      })
+    ]);
+
+    if (!window.Evidence || !window.Evidence.isAvailable()) {
+      field.appendChild(el('p', {
+        class: 'tiny muted',
+        text: 'Attachments need IndexedDB, which this browser has switched off. Everything else still works.'
+      }));
+      return field;
+    }
+
+    var list = el('div', { class: 'evidence__list' });
+    var input = el('input', {
+      type: 'file',
+      multiple: 'multiple',
+      class: 'visually-hidden',
+      id: 'ev-' + key,
+      onchange: function () {
+        var files = Array.prototype.slice.call(input.files || []);
+        if (!files.length) return;
+        Promise.all(files.map(function (f) {
+          return window.Evidence.add(key, f).catch(function (e) {
+            window.App.toast(e.message);
+            return null;
+          });
+        })).then(function (added) {
+          var ok = added.filter(Boolean).length;
+          if (ok) {
+            window.Store.setRecord(program.id, key, { evidence: true });
+            window.App.toast(ok + (ok === 1 ? ' file attached.' : ' files attached.'));
+          }
+          input.value = '';
+          refresh();
+        });
+      }
+    });
+
+    function refresh() {
+      window.Evidence.listFor(key).then(function (rows) {
+        list.innerHTML = '';
+        if (!rows.length) {
+          list.appendChild(el('p', { class: 'tiny muted', style: 'margin:0', text: 'Nothing attached yet.' }));
+          return;
+        }
+        rows.forEach(function (r) {
+          var url = window.Evidence.urlFor(r);
+          list.appendChild(el('div', { class: 'evidence__item' }, [
+            el('span', { class: 'evidence__name', text: r.name }),
+            el('span', { class: 'evidence__meta mono tiny', text: window.Evidence.formatBytes(r.size) }),
+            url ? el('a', {
+              class: 'btn btn--small btn--ghost',
+              href: url,
+              target: '_blank',
+              rel: 'noopener',
+              text: 'Open'
+            }) : null,
+            el('button', {
+              class: 'btn btn--small btn--ghost', type: 'button', text: 'Remove',
+              onclick: function () {
+                window.Evidence.remove(r.id).then(refresh);
+              }
+            })
+          ]));
+        });
+      });
+    }
+
+    field.appendChild(el('div', { class: 'btn-row', style: 'margin-bottom:0.6rem' }, [
+      el('label', { class: 'btn btn--small btn--ghost', for: 'ev-' + key, text: 'Attach evidence' }),
+      input
+    ]));
+    field.appendChild(list);
+    refresh();
+    return field;
+  }
+
   /* --------------------------------------------------------------- today */
 
   function findToday() {
@@ -363,7 +607,7 @@
         ]),
         el('div', { style: 'text-align:right' }, [
           el('div', { class: 'mono small', text: P.fmtDate(s.date) }),
-          el('div', { class: 'mono small muted', text: s.hours + ' hours · week ' + w.number })
+          el('div', { class: 'mono small muted', text: fmtDuration(s.minutes) + ' · week ' + w.number })
         ])
       ])
     ]);
@@ -399,10 +643,11 @@
       }));
     }
 
-    var todaySteps = stepList(s.steps, s.check);
-    if (todaySteps) {
-      todaySteps.style.marginTop = '1.25rem';
-      card.appendChild(todaySteps);
+    /* The run sheet below lists every step with its own time window, so the
+       plain step list would be the same content twice. Only the completion
+       test needs restating here. */
+    if (s.check) {
+      card.appendChild(el('p', { class: 'steps__check', style: 'margin:1.25rem 0 0;padding-left:0', text: 'Done when: ' + s.check }));
     }
 
     /* The generic note only earns its place when nothing more specific was
@@ -415,34 +660,8 @@
       }));
     }
 
-    var block = el('div', { style: 'margin-top:1.75rem;border-top:1px solid var(--rule);padding-top:1.25rem' });
-    block.appendChild(el('span', {
-      class: 'eyebrow',
-      text: 'How to spend the ' + s.minutes + ' minutes' + (s.first ? ' · first session' : '')
-    }));
-    var table = el('table', { class: 'table' });
-    (s.plan || []).forEach(function (b) {
-      table.appendChild(el('tr', {}, [
-        el('td', { class: 'num table__dur', text: b.minutes + ' min' }),
-        el('td', { class: 'table__key', text: b.name }),
-        el('td', { class: 'muted', text: b.note })
-      ]));
-    });
-    block.appendChild(table);
-    card.appendChild(block);
-
-    var label = el('label', { class: 'check', style: 'margin-top:1.5rem;border-bottom:0' }, [
-      el('input', {
-        type: 'checkbox',
-        checked: checked ? 'checked' : null,
-        onchange: function () {
-          progress = window.Store.toggleSession(program.id, key, s.hours);
-          render();
-        }
-      }),
-      el('span', { text: 'Done. Log it.' })
-    ]);
-    card.appendChild(label);
+    card.appendChild(renderRunsheet(s));
+    card.appendChild(renderRecord(w, s));
 
     wrap.appendChild(card);
     sec.appendChild(wrap);
@@ -864,7 +1083,7 @@
                 render();
               }
             }),
-            el('span', { class: 'session__hours', text: s.hours + ' h' })
+            el('span', { class: 'session__hours', text: fmtDuration(s.minutes) })
           ])
         ]));
       });

@@ -527,7 +527,14 @@
             drill: work.drill,
             stage: stageInfo,
             first: isFirst,
-            plan: sessionPlan({ minutes: isConsolidation ? Math.round(s.minutes * 0.6) : s.minutes, type: s.type }, isFirst)
+            plan: sessionPlan({ minutes: isConsolidation ? Math.round(s.minutes * 0.6) : s.minutes, type: s.type }, isFirst),
+            runsheet: sessionRunsheet({
+              minutes: isConsolidation ? Math.round(s.minutes * 0.6) : s.minutes,
+              type: s.type,
+              steps: work.steps,
+              drill: work.drill,
+              title: work.title
+            }, isFirst, discipline)
           };
         });
 
@@ -591,6 +598,170 @@
       { name: 'Write it up', share: 0.15, note: 'Add the entry to your log so next week has something to read back.' }
     ]
   };
+
+  /* ---------------------------------------------------------- runsheet */
+
+  /* A minute-by-minute runsheet for one session, tied to its own numbered
+   * steps rather than to four generic bands.
+   *
+   * Steps are not equal: "Record five minutes, watch it back, re-record until
+   * you are under two per minute" is not the same size as "Note the date."
+   * Weight is inferred from what the step actually asks for, and the rules are
+   * named so they can be argued with and tested.
+   */
+  var STEP_RULES = [
+    { name: 'repetition', weight: 3.2, test: /\b(repeat|until you|each one|for each|one by one|per day|a day|every day)\b/i },
+    { name: 'timed-block', weight: 3.0, test: /\b(\d+)\s*(minute|minutes|hour|hours)\b/i },
+    { name: 'volume', weight: 2.8, test: /\b(twenty|fifteen|twelve|ten|eight|seven|six|five|four|three|\d{2,})\b/i },
+    { name: 'produce', weight: 2.6, test: /\b(write|draft|build|design|record|make|produce|rebuild|deliver|publish|send|run the|interview|call)\b/i },
+    { name: 'analyse', weight: 2.0, test: /\b(read|study|compare|review|watch|check|measure|score|chart|map|audit)\b/i },
+    { name: 'capture', weight: 1.0, test: /^(note|mark|write (the|down) (number|date)|log|save|keep|file|add it)\b/i },
+    { name: 'default', weight: 1.8, test: /.^/ }
+  ];
+
+  function stepWeight(text) {
+    /* Capture rules win when they match the opening, because a short
+     * bookkeeping step reads like a produce step otherwise. */
+    var capture = STEP_RULES.filter(function (r) { return r.name === 'capture'; })[0];
+    if (capture.test.test(text)) return { weight: capture.weight, rule: 'capture' };
+    for (var i = 0; i < STEP_RULES.length; i++) {
+      if (STEP_RULES[i].name === 'capture') continue;
+      if (STEP_RULES[i].test.test(text)) {
+        return { weight: STEP_RULES[i].weight, rule: STEP_RULES[i].name };
+      }
+    }
+    return { weight: 1.8, rule: 'default' };
+  }
+
+  /* How many repetitions a dose implies, if it is a small countable number. */
+  var WORDS = { two: 2, three: 3, four: 4, five: 5, six: 6, ten: 10, twelve: 12, twenty: 20 };
+  function repsInDose(dose) {
+    if (!dose) return 0;
+    var d = String(dose).toLowerCase();
+    /* "1 problem a day" and "3 minutes recorded" are not rep counts. */
+    if (/\b(minute|minutes|hour|hours)\b/.test(d) && !/\brep/.test(d)) return 0;
+    var digits = d.match(/^(\d+)\b/);
+    if (digits) return parseInt(digits[1], 10);
+    var word = d.match(/^([a-z]+)\b/);
+    if (word && WORDS[word[1]]) return WORDS[word[1]];
+    return 0;
+  }
+
+  function clock(mins) {
+    var h = Math.floor(mins / 60);
+    var m = mins % 60;
+    return h + ':' + String(m).padStart(2, '0');
+  }
+
+  /* Fixed opening and closing bands, as a share of the session. The rest is
+   * divided among the steps by weight. */
+  var OPEN_SHARE = 0.09;
+  var CLOSE_SHARE = 0.10;
+
+  function sessionRunsheet(session, isFirstOfPlan, discipline) {
+    var total = Math.max(4, session.minutes || Math.round(session.hours * 60));
+    var steps = session.steps || [];
+    var rows = [];
+
+    /* Opening band. */
+    var open = isFirstOfPlan
+      ? {
+          label: 'Set up',
+          detail: 'Tools from "Before week 1" in place, and your baseline numbers written down with today\'s date.',
+          kind: 'open'
+        }
+      : session.type.key === 'review'
+        ? { label: 'Pull the numbers', detail: 'Sessions done out of planned, hours logged, and last week\'s scores.', kind: 'open' }
+        : { label: 'Recall', detail: 'Notes shut. Write what you remember from last session, then check what you missed.', kind: 'open' };
+
+    var close = {
+      label: 'Log it',
+      detail: 'Three lines: what you practised, what was hard, what changes next session. Then score this session.',
+      kind: 'close'
+    };
+
+    if (!steps.length) {
+      /* Drill sessions carry a protocol rather than steps. Where the dose
+       * implies a small number of repetitions, split the working band into
+       * those reps so the session has a shape instead of one long block.
+       * Above six the reps are too short to schedule individually, so the
+       * row states the rate and leaves the counting to you. */
+      var doseCount = session.drill ? repsInDose(session.drill.dose) : 0;
+      var bodyShare = 1 - OPEN_SHARE - CLOSE_SHARE;
+
+      if (session.drill && doseCount >= 2 && doseCount <= 6) {
+        var repShares = [OPEN_SHARE]
+          .concat(new Array(doseCount).fill(bodyShare / doseCount))
+          .concat([CLOSE_SHARE]);
+        var repSplit = apportion(repShares, total);
+        rows.push({ label: open.label, detail: open.detail, kind: 'open', minutes: repSplit[0] });
+        for (var r = 0; r < doseCount; r++) {
+          rows.push({
+            label: 'Rep ' + (r + 1) + ' of ' + doseCount,
+            detail: r === 0
+              ? session.drill.protocol
+              : 'Same again. Before you start, name the one thing you are fixing from the last rep.',
+            kind: 'work',
+            rule: 'repetition',
+            minutes: repSplit[r + 1]
+          });
+        }
+        rows.push({ label: close.label, detail: close.detail, kind: 'close', minutes: repSplit[repSplit.length - 1] });
+      } else {
+        var drillBody = session.drill
+          ? { label: session.drill.name, detail: session.drill.protocol, dose: session.drill.dose }
+          : { label: 'The work', detail: session.title };
+        var split3 = apportion([OPEN_SHARE, bodyShare, CLOSE_SHARE], total);
+        rows = [
+          { label: open.label, detail: open.detail, kind: 'open', minutes: split3[0] },
+          { label: drillBody.label, detail: drillBody.detail, kind: 'work', dose: drillBody.dose, minutes: split3[1] },
+          { label: close.label, detail: close.detail, kind: 'close', minutes: split3[2] }
+        ];
+      }
+    } else {
+      var weights = steps.map(function (t) { return stepWeight(t); });
+      var bodyShare = 1 - OPEN_SHARE - CLOSE_SHARE;
+      var weightTotal = weights.reduce(function (a, w) { return a + w.weight; }, 0);
+      var shares = [OPEN_SHARE]
+        .concat(weights.map(function (w) { return bodyShare * (w.weight / weightTotal); }))
+        .concat([CLOSE_SHARE]);
+      var split = apportion(shares, total);
+
+      rows.push({ label: open.label, detail: open.detail, kind: 'open', minutes: split[0] });
+      steps.forEach(function (text, i) {
+        rows.push({
+          label: 'Step ' + (i + 1),
+          detail: text,
+          kind: 'work',
+          rule: weights[i].rule,
+          minutes: split[i + 1]
+        });
+      });
+      rows.push({ label: close.label, detail: close.detail, kind: 'close', minutes: split[split.length - 1] });
+    }
+
+    /* Clock windows, and what to drop first when the session is short. The
+     * heaviest work step is never the thing you cut. */
+    var at = 0;
+    rows.forEach(function (r) {
+      r.from = clock(at);
+      at += r.minutes;
+      r.to = clock(at);
+    });
+
+    var workRows = rows.filter(function (r) { return r.kind === 'work'; });
+    var lightest = workRows.slice().sort(function (a, b) { return a.minutes - b.minutes; })[0];
+    if (lightest && workRows.length > 2) lightest.cutFirst = true;
+
+    return {
+      total: total,
+      rows: rows,
+      /* Honest guidance rather than a rigid schedule. */
+      note: session.type.key === 'review'
+        ? 'Scoring, not practice. If it takes longer than this you are re-reading rather than deciding.'
+        : 'If you run out of time, stop at the end of a step rather than half way through one, and log anyway.'
+    };
+  }
 
   function sessionPlan(session, isFirstOfPlan) {
     var minutes = Math.max(4, session.minutes || Math.round(session.hours * 60));
@@ -864,6 +1035,8 @@
   window.Planner = {
     build: build,
     sessionPlan: sessionPlan,
+    sessionRunsheet: sessionRunsheet,
+    stepWeight: stepWeight,
     toMarkdown: toMarkdown,
     toICS: toICS,
     levels: LEVELS,

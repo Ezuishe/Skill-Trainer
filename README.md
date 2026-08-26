@@ -60,6 +60,50 @@ The transcript lists every module with weeks, sessions done, gate progress,
 credits and status, plus your standing: credits earned of the total and modules
 awarded of the total.
 
+## The run sheet
+
+Every session carries a minute-by-minute run sheet with clock windows, built
+from that session's own steps rather than four generic bands:
+
+```
+RUN SHEET                                     130 min · 7 blocks
+0:00  12 min   Recall      Notes shut. Write what you remember...
+0:12  20 min   Step 1      Write the one sentence you want repeated...   [cut first if short]
+0:32  22 min   Step 2      Outline three movements that serve it...
+...
+1:57  13 min   Log it      Three lines, then score this session.
+```
+
+Steps are not equal in size, so minutes are allocated by weight. The rules are
+named and testable (`repetition`, `timed-block`, `volume`, `produce`, `analyse`,
+`capture`), so "Record five minutes and repeat until under two per minute" gets
+more time than "Note the date." The lightest working step is marked **cut first
+if short**, so running out of time does not mean cutting the drill.
+
+Drill sessions whose dose implies two to six repetitions are split into
+individual reps, each prompting you to name what you are fixing from the last one.
+
+## Evidence and scoring
+
+Each session can be recorded, not just ticked:
+
+- **A score out of five** for how it went.
+- **How hard it felt** — too easy, about right, too hard.
+- **Evidence**: attach recordings, drafts, screenshots. Files live in
+  IndexedDB, so they stay in your browser like everything else. 25 MB per file,
+  with quota errors reported plainly rather than failing silently.
+- **A note** on what to change next time.
+
+Difficulty feeds a **calibration check** that enforces the band the method
+commits to. Mark four of six sessions too easy and the plan says so:
+
+> You have marked 4 of your last 6 sessions too easy. That is practice below
+> your level, and it will not move anything. Raise the difficulty: more volume,
+> a shorter time limit, or a harder audience.
+
+Scores also produce a trend and a plateau warning: eight or more scored sessions
+with no improvement suggests changing one variable, not three.
+
 ## How a session is spent
 
 Each session carries its own breakdown in real minutes, computed from that

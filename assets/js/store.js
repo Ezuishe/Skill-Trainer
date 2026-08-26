@@ -73,12 +73,16 @@
   /* ------------------------------------------------------------ progress */
 
   function blankProgress(id) {
-    return { id: id, sessions: {}, gates: {}, logs: [], hours: 0 };
+    /* `records` holds what you thought of a session: a score, how hard it felt,
+     * and a note. `sessions` stays the simple done-marker so older saved
+     * progress keeps working. */
+    return { id: id, sessions: {}, gates: {}, logs: [], hours: 0, records: {} };
   }
 
   function getProgress(id) {
     var p = read(KEYS.progress, null);
     if (!p || p.id !== id) return blankProgress(id);
+    if (!p.records) p.records = {};
     return p;
   }
 
@@ -99,6 +103,32 @@
   function toggleGateCriterion(id, key) {
     var p = getProgress(id);
     if (p.gates[key]) delete p.gates[key]; else p.gates[key] = todayKey();
+    return setProgress(p);
+  }
+
+  /* Score how the session went, and how hard it felt. Difficulty drives the
+   * calibration advice: the method targets a 50-85% success rate, so a run of
+   * "too easy" means the difficulty should go up. */
+  function setRecord(id, key, patch) {
+    var p = getProgress(id);
+    var current = p.records[key] || {};
+    Object.keys(patch).forEach(function (k) {
+      if (patch[k] === null) delete current[k];
+      else current[k] = patch[k];
+    });
+    current.at = current.at || todayKey();
+    current.updated = todayKey();
+    p.records[key] = current;
+    return setProgress(p);
+  }
+
+  function getRecord(id, key) {
+    return getProgress(id).records[key] || {};
+  }
+
+  function clearRecord(id, key) {
+    var p = getProgress(id);
+    delete p.records[key];
     return setProgress(p);
   }
 
@@ -163,6 +193,9 @@
     clearProgram: clearProgram,
     getProgress: getProgress,
     toggleSession: toggleSession,
+    setRecord: setRecord,
+    getRecord: getRecord,
+    clearRecord: clearRecord,
     toggleGateCriterion: toggleGateCriterion,
     addLog: addLog,
     deleteLog: deleteLog,

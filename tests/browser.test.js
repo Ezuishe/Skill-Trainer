@@ -128,6 +128,16 @@ function watch(page, label) {
   const stepItems = await page.locator('.steps li').count();
   console.log('step lists rendered:', stepLists, '| individual steps:', stepItems);
   if (stepItems < 50) problems.push(`expected many numbered steps, got ${stepItems}`);
+
+  // the session card must not print its steps twice (once as a list, once as
+  // the run sheet) — that was the original duplication complaint
+  const cardStepLists = await page.locator('.section.no-print .card .steps').count();
+  if (cardStepLists > 0) problems.push('session card duplicates its steps alongside the run sheet');
+
+  // and durations must read like durations
+  const cardMeta = await page.locator('.section.no-print .card .mono.small.muted').first().innerText();
+  console.log('session card duration:', cardMeta);
+  if (/\d+\.\d+ hours/.test(cardMeta)) problems.push(`unreadable duration: ${cardMeta}`);
   const setupSection = await page.locator('h2:has-text("Before week 1")').count();
   if (!setupSection) problems.push('Before week 1 section missing');
 
@@ -172,6 +182,53 @@ function watch(page, label) {
   if (firstSessionText.sum !== firstSessionText.minutes) {
     problems.push(`first session time plan sums to ${firstSessionText.sum}, session is ${firstSessionText.minutes}`);
   }
+
+  // runsheet: per-step clock windows on the session card
+  const rsRows = await page.locator('.runsheet .rs').count();
+  const rsText = await page.locator('.runsheet').innerText();
+  console.log('runsheet rows:', rsRows, '|', rsText.split('\n').slice(0, 4).join(' / '));
+  if (rsRows < 3) problems.push(`expected runsheet rows, got ${rsRows}`);
+  if (!/\d+:\d\d/.test(rsText)) problems.push('runsheet has no clock windows');
+
+  // scoring and evidence controls
+  const scaleBtns = await page.locator('.record .scale__btn').count();
+  if (scaleBtns !== 5) problems.push(`expected a 1-5 scale, got ${scaleBtns}`);
+  const diffBtns = await page.locator('.record .choice').count();
+  if (diffBtns !== 3) problems.push(`expected 3 difficulty options, got ${diffBtns}`);
+
+  // score a session and confirm it persists
+  await page.locator('.record .scale__btn').nth(3).click();
+  await page.waitForTimeout(300);
+  await page.locator('.record .choice').nth(0).click();   // "too easy"
+  await page.waitForTimeout(400);
+  const scored = await page.evaluate(() => {
+    const p = window.Store.getProgress(window.Store.loadProgram().id);
+    const k = Object.keys(p.records)[0];
+    return { key: k, rec: p.records[k] };
+  });
+  console.log('recorded session:', JSON.stringify(scored.rec));
+  if (!scored.rec || scored.rec.score !== 4 || scored.rec.difficulty !== 'easy') {
+    problems.push('session score/difficulty did not persist');
+  }
+
+  // attach a file and confirm it lands in IndexedDB
+  await page.setInputFiles('.record input[type="file"]', {
+    name: 'take-01.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('first recording, 3 fillers per minute')
+  });
+  await page.waitForTimeout(800);
+  const evName = await page.locator('.evidence__name').first().innerText().catch(() => '');
+  console.log('attached evidence:', evName);
+  if (!/take-01/.test(evName)) problems.push('evidence upload did not appear in the list');
+  const persisted = await page.evaluate(async () => {
+    const p = window.Store.getProgress(window.Store.loadProgram().id);
+    const k = Object.keys(p.records)[0];
+    const rows = await window.Evidence.listFor(k);
+    return rows.map(r => r.name + ':' + r.size);
+  });
+  console.log('evidence in IndexedDB:', persisted.join(', '));
+  if (!persisted.length) problems.push('evidence not stored in IndexedDB');
 
   // stages and mistakes should be present on the phase view
   const stageCount = await page.locator('.stage').count();

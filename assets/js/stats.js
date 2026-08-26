@@ -226,6 +226,100 @@
     return { earned: out.slice(-6), next: upcoming };
   }
 
+  /* ------------------------------------------------------------ calibration */
+
+  /* What your own scores say about whether the practice is pitched right.
+   *
+   * The method page commits to a 50-85% success band: above it you are
+   * performing, below it you are flailing. Nobody computes their success rate
+   * mid-drill, so difficulty is collected as a three-way judgement after the
+   * session and turned into that advice here.
+   */
+  function calibration(program, progress) {
+    var records = progress.records || {};
+
+    /* In schedule order, so "recent" means recent in the plan. */
+    var ordered = [];
+    program.schedule.forEach(function (w) {
+      w.sessions.forEach(function (sn) {
+        var key = 'w' + w.number + 'd' + sn.day;
+        var rec = records[key];
+        if (rec && (rec.score || rec.difficulty)) {
+          ordered.push({ key: key, week: w.number, type: sn.type.key, rec: rec });
+        }
+      });
+    });
+
+    var scored = ordered.filter(function (r) { return typeof r.rec.score === 'number'; });
+    var recent = scored.slice(-5);
+    var previous = scored.slice(-10, -5);
+
+    function mean(list) {
+      if (!list.length) return null;
+      return Math.round((list.reduce(function (a, r) { return a + r.rec.score; }, 0) / list.length) * 10) / 10;
+    }
+
+    var recentMean = mean(recent);
+    var previousMean = mean(previous);
+    var trend = null;
+    if (recentMean !== null && previousMean !== null) {
+      var delta = Math.round((recentMean - previousMean) * 10) / 10;
+      trend = { delta: delta, direction: delta > 0.3 ? 'up' : (delta < -0.3 ? 'down' : 'flat') };
+    }
+
+    /* Difficulty over the last six judged sessions. */
+    var judged = ordered.filter(function (r) { return r.rec.difficulty; }).slice(-6);
+    var counts = { easy: 0, right: 0, hard: 0 };
+    judged.forEach(function (r) { counts[r.rec.difficulty] = (counts[r.rec.difficulty] || 0) + 1; });
+
+    var verdict = null;
+    if (judged.length >= 3) {
+      if (counts.easy >= Math.ceil(judged.length * 0.6)) {
+        verdict = {
+          state: 'too-easy',
+          line: 'You have marked ' + counts.easy + ' of your last ' + judged.length +
+            ' sessions too easy. That is practice below your level, and it will not move anything. ' +
+            'Raise the difficulty: more volume, a shorter time limit, or a harder audience.'
+        };
+      } else if (counts.hard >= Math.ceil(judged.length * 0.6)) {
+        verdict = {
+          state: 'too-hard',
+          line: 'You have marked ' + counts.hard + ' of your last ' + judged.length +
+            ' sessions too hard. Failing almost everything teaches very little. ' +
+            'Cut the drill in half and rebuild from the part you can do.'
+        };
+      } else {
+        verdict = {
+          state: 'in-band',
+          line: 'Difficulty is sitting about right across your last ' + judged.length +
+            ' sessions. Leave it alone while it keeps producing progress.'
+        };
+      }
+    }
+
+    /* A plateau is a flat or falling score over enough sessions to be real. */
+    var plateau = null;
+    if (scored.length >= 8 && trend && trend.direction !== 'up') {
+      plateau = {
+        line: 'Your scores have not improved across the last ' + Math.min(10, scored.length) +
+          ' sessions. Change one variable, not three: the difficulty, where the feedback comes ' +
+          'from, or the drill itself. Give it a fortnight before judging.'
+      };
+    }
+
+    return {
+      count: scored.length,
+      judged: judged.length,
+      recentMean: recentMean,
+      previousMean: previousMean,
+      trend: trend,
+      difficulty: counts,
+      verdict: verdict,
+      plateau: plateau,
+      evidenceNoted: ordered.filter(function (r) { return r.rec.evidence; }).length
+    };
+  }
+
   /* ------------------------------------------------------------- transcript */
 
   /* A university-style record. Each phase is a module worth credits equal to
@@ -348,13 +442,15 @@
       streak: s,
       momentum: momentum(program, progress, now, s, w),
       markers: markers(program, progress, l, w, s, totals),
-      transcript: transcript(program, progress)
+      transcript: transcript(program, progress),
+      calibration: calibration(program, progress)
     };
   }
 
   window.Stats = {
     build: build,
     transcript: transcript,
+    calibration: calibration,
     ladder: ladder,
     thisWeek: thisWeek,
     streak: streak,
