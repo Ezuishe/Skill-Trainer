@@ -25,12 +25,18 @@
     return wrap;
   }
 
-  /* "2.17 hours" is not how anyone describes a session. */
-  function fmtDuration(mins) {
-    if (mins < 60) return mins + ' min';
-    var h = Math.floor(mins / 60);
-    var m = mins % 60;
-    return m ? h + 'h ' + m + 'm' : h + ' h';
+  /* "2.17 hours" is not how anyone describes a session, and a bare "488"
+     gets read as hours. One formatter, defined in the planner. */
+  var fmtDuration = window.Planner.fmtDuration;
+
+  /* Sections carry ids so the walkthrough can send you to the right one
+     instead of telling you to scroll. */
+  function jumpTo(id) {
+    return function (ev) {
+      ev.preventDefault();
+      var node = document.getElementById(id);
+      if (node) node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
   }
 
   function sessionKey(week, session) { return 'w' + week.number + 'd' + session.day; }
@@ -208,6 +214,7 @@
   function renderHead(root) {
     var i = program.input;
     var t = totals();
+    var bp = program.blockPlan || P.blockPlan(i);
     var sec = el('section', { class: 'wrap', style: 'padding-block:clamp(2.5rem,6vw,4.5rem)' });
 
     sec.appendChild(el('span', { class: 'eyebrow', text: program.discipline.discipline + ' · training plan' }));
@@ -245,9 +252,12 @@
     sec.appendChild(el('p', {
       class: 'small muted',
       style: 'margin-top:1rem',
-      text: P.fmtDate(program.startDate) + ' → ' + P.fmtDate(program.endDate) +
-        ' · ' + i.daysPerWeek + ' sessions/week · starting from: ' +
-        program.levelLabel.toLowerCase()
+      text: P.fmtDate(program.startDate) + ' → ' + P.fmtDate(program.endDate) + ' · ' +
+        bp.trainingDays + ' training day' + (bp.trainingDays === 1 ? '' : 's') + ' a week, ' +
+        (bp.blocksPerDay === 1
+          ? 'one sitting of ' + fmtDuration(bp.blockMinutes)
+          : bp.blocksPerDay + ' sittings of ' + fmtDuration(bp.blockMinutes)) +
+        ' · starting from: ' + program.levelLabel.toLowerCase()
     }));
 
     sec.appendChild(renderStatus());
@@ -290,16 +300,278 @@
     root.appendChild(sec);
   }
 
+  /* -------------------------------------------------------- walkthrough */
+
+  /* A plan is only obvious to the person who built it. This is the part that
+     says what to do first, second and third, in order, with the state of each
+     step read off work actually logged rather than off a checkbox someone
+     ticked to make the panel go away. */
+
+  var walkExpanded = null;   /* null = decide from progress */
+
+  function walkSteps() {
+    var records = progress.records || {};
+    var sessionsDone = Object.keys(progress.sessions || {}).length;
+    var scored = Object.keys(records).some(function (k) {
+      return typeof records[k].score === 'number';
+    });
+
+    var firstSession = null, firstReview = null, reviewDone = false;
+    program.schedule.forEach(function (w) {
+      w.sessions.forEach(function (s) {
+        if (!firstSession) firstSession = { w: w, s: s };
+        if (s.type.key === 'review') {
+          if (!firstReview) firstReview = { w: w, s: s };
+          if (progress.sessions[sessionKey(w, s)]) reviewDone = true;
+        }
+      });
+    });
+
+    var locks = window.Stats.gateLocks(program, progress);
+    var gate1 = locks[0];
+    var phase1 = program.phases[0];
+    var v = program.verdict;
+
+    return [
+      {
+        id: 'verdict',
+        title: 'Check the arithmetic before you commit to it',
+        target: 'sec-verdict',
+        targetLabel: 'Read what these hours buy',
+        done: !!progress.steps.verdict,
+        ack: 'verdict',
+        ackLabel: 'I have read it',
+        body: [
+          'Your ' + program.totalHours + ' practice hours reach ' +
+            (v.reached ? v.reached.label.toLowerCase() : 'below the first level') +
+            '. Section 02 says what that gets you, what it does not, and the three ways to change it.',
+          'If the level is lower than you were expecting, rebuild the plan now with different numbers. ' +
+            'That costs a minute today and saves you finding out in week five.'
+        ]
+      },
+      {
+        id: 'setup',
+        title: 'Spend one hour setting up, before any session',
+        target: 'sec-setup',
+        targetLabel: 'Open Before week 1',
+        done: !!progress.steps.setup,
+        ack: 'setup',
+        ackLabel: 'Setup done, baseline written down',
+        body: [
+          'Section 03 lists the tools you need, where honest feedback is going to come from, and a ' +
+            'baseline to measure today.',
+          'The baseline is the step everyone skips. Without a number from before you started, you have ' +
+            'no way to tell in week twelve whether any of this worked, and you will end up arguing with ' +
+            'your own memory.'
+        ]
+      },
+      {
+        id: 'first',
+        title: 'Run the first session off the run sheet',
+        target: 'sec-today',
+        targetLabel: 'Go to the session card',
+        done: sessionsDone > 0,
+        body: firstSession
+          ? [
+            'Your first sitting is ' + P.fmtShort(firstSession.s.date) + ': ' +
+              firstSession.s.type.label.toLowerCase() + ', ' + fmtDuration(firstSession.s.minutes) +
+              ' — "' + firstSession.s.title + '".',
+            'The run sheet on the card breaks that into ' + firstSession.s.runsheet.rows.length +
+              ' blocks with a clock window on each. Work down it in order. If you run out of time, ' +
+              'stop at the end of a block rather than half way through one, and log it anyway.'
+          ]
+          : ['Open the session card and work down the run sheet in order.']
+      },
+      {
+        id: 'record',
+        title: 'Record the session, not just tick it',
+        target: 'sec-today',
+        targetLabel: 'Go to the record panel',
+        done: scored,
+        body: [
+          'Under every session card there is a record: mark it done, score it out of five, say whether ' +
+            'it was too easy, about right or too hard, and attach whatever you made — a recording, a ' +
+            'draft, a screenshot.',
+          'The difficulty judgement is the one that does work. It feeds the calibration line in the ' +
+            'panel at the top of this page, which is what keeps the practice in the band where it ' +
+            'changes anything. Mark most sessions too easy and the plan will tell you to make them ' +
+            'harder rather than congratulate you.'
+        ]
+      },
+      {
+        id: 'review',
+        title: 'Close the week with the review session',
+        target: 'sec-schedule',
+        targetLabel: 'See the week',
+        done: reviewDone,
+        body: firstReview
+          ? [
+            'The last sitting of each training week is Review & Log: ' +
+              fmtDuration(firstReview.s.minutes) + ', a fixed six-point procedure.',
+            'It is where you count what you actually did against what was planned, check yourself ' +
+              'against this stage, and name next week\'s single weakness. It is scoring rather than ' +
+              'practice, which is why it is short.'
+          ]
+          : [
+            'At this session count there is no separate weekly review, so do the counting at the end ' +
+              'of your last session of the week: sessions done against planned, and one sentence on ' +
+              'next week\'s weakness.'
+          ]
+      },
+      {
+        id: 'gate',
+        title: 'Sit the gate at the end of the phase',
+        target: 'sec-phases',
+        targetLabel: 'See the gates',
+        done: !!(gate1 && gate1.complete),
+        body: [
+          'Phase 1 ends in week ' + phase1.weekEnd + ' at the gate "' + phase1.milestone.name +
+            '", with ' + phase1.milestone.criteria.length + ' criteria another person could check.',
+          'Gates open in order: the next phase\'s gate stays locked until this one passes in full. If ' +
+            'it does not pass, repeat the last week of the phase rather than moving on. Moving on ' +
+            'because the weeks ran out is how people finish a plan with nothing they can do.'
+        ]
+      }
+    ];
+  }
+
+  function walkGlossary() {
+    var mix = program.discipline;
+    return [
+      ['Phase', 'One pillar of the skill, several weeks long, ending at a gate. This plan has ' +
+        program.phases.length + '.'],
+      ['Gate', 'The criteria that say you can move on, written so someone else could check them. ' +
+        'They unlock in order — you cannot claim one while the phase before it is unpassed.'],
+      ['Session', 'One sitting. Four kinds: acquire (take something in and use it), drill ' +
+        '(repetitions against one weakness), produce (make the real thing), and review (score the ' +
+        'week). They are mixed rather than blocked, on purpose.'],
+      ['Run sheet', 'The minute-by-minute order for one session, with a clock window on each block ' +
+        'and a mark on the block to drop first if you are short.'],
+      ['Stage', 'How a phase escalates. Week 4 of a phase is not a repeat of week 1, and the stage ' +
+        'name on each session says where you are in that.'],
+      ['Credit', 'One hour of scheduled practice in a phase. Credits accrue as you log sessions; the ' +
+        'module is only awarded when the gate passes. Hours are attendance, the gate is evidence.'],
+      ['Baseline', 'The measurement you take in ' + mix.name.toLowerCase() +
+        ' before week 1, so progress later is a number rather than a feeling.']
+    ];
+  }
+
+  function renderWalkthrough(root) {
+    var steps = walkSteps();
+    var doneCount = steps.filter(function (s) { return s.done; }).length;
+    var currentIdx = steps.findIndex(function (s) { return !s.done; });
+    var finished = currentIdx === -1;
+    var open = walkExpanded === null ? !finished : walkExpanded;
+
+    var sec = el('section', { class: 'section no-print', id: 'sec-start' });
+    var wrap = el('div', { class: 'wrap' });
+
+    wrap.appendChild(el('div', { class: 'section__head' }, [
+      el('div', { class: 'section__num', text: '01' }),
+      el('div', {}, [
+        el('h2', { text: 'Start here' }),
+        el('p', {
+          class: 'lede', style: 'margin-top:1rem',
+          text: finished
+            ? 'You have been through all six. This stays here as a reference for what the plan expects of you.'
+            : 'Six things, in order. Everything else on this page is detail hanging off one of them. ' +
+              'You are on step ' + (currentIdx + 1) + '.'
+        })
+      ])
+    ]));
+
+    var box = el('div', { class: 'walk', 'data-open': String(open) });
+
+    box.appendChild(el('div', { class: 'walk__bar' }, [
+      el('span', { class: 'mono tiny muted', text: doneCount + ' of ' + steps.length + ' done' }),
+      el('div', { class: 'meter meter--sm', style: 'flex:1;margin:0' }, [
+        el('div', {
+          class: 'meter__fill',
+          style: 'width:' + Math.round((doneCount / steps.length) * 100) + '%'
+        })
+      ]),
+      el('button', {
+        class: 'walk__toggle', type: 'button',
+        text: open ? 'Collapse' : 'Show the steps',
+        onclick: function () { walkExpanded = !open; render(); }
+      })
+    ]));
+
+    if (open) {
+      steps.forEach(function (st, i) {
+        var isCurrent = i === currentIdx;
+        var row = el('div', {
+          class: 'walk__step',
+          'data-state': st.done ? 'done' : (isCurrent ? 'current' : 'ahead')
+        });
+
+        row.appendChild(el('span', { class: 'walk__n', text: st.done ? '✓' : String(i + 1) }));
+
+        var bodyCol = el('div', { class: 'walk__body' });
+        bodyCol.appendChild(el('div', { class: 'walk__title', text: st.title }));
+
+        if (isCurrent || st.done) {
+          st.body.forEach(function (para) {
+            bodyCol.appendChild(el('p', { class: 'walk__text', text: para }));
+          });
+
+          var actions = el('div', { class: 'walk__actions' });
+          actions.appendChild(el('a', {
+            class: 'walk__link', href: '#' + st.target, text: st.targetLabel + ' →',
+            onclick: jumpTo(st.target)
+          }));
+          if (st.ack) {
+            actions.appendChild(el('button', {
+              class: 'btn btn--tiny', type: 'button',
+              text: st.done ? 'Mark as not done' : st.ackLabel,
+              onclick: function () {
+                progress = window.Store.markStep(program.id, st.ack, !st.done);
+                walkExpanded = null;
+                render();
+              }
+            }));
+          } else if (!st.done) {
+            actions.appendChild(el('span', {
+              class: 'tiny muted',
+              text: 'This ticks itself once you have done it.'
+            }));
+          }
+          bodyCol.appendChild(actions);
+        }
+
+        row.appendChild(bodyCol);
+        box.appendChild(row);
+      });
+
+      /* The vocabulary. Without it, half the page is nouns the reader has not
+         been introduced to. */
+      var gloss = el('div', { class: 'walk__gloss' }, [
+        el('span', { class: 'eyebrow', text: 'The parts of this plan' })
+      ]);
+      var dl = el('dl', { class: 'defs' });
+      walkGlossary().forEach(function (pair) {
+        dl.appendChild(el('dt', { text: pair[0] }));
+        dl.appendChild(el('dd', { text: pair[1] }));
+      });
+      gloss.appendChild(dl);
+      box.appendChild(gloss);
+    }
+
+    wrap.appendChild(box);
+    sec.appendChild(wrap);
+    root.appendChild(sec);
+  }
+
   /* ------------------------------------------------------------- setup */
 
   function renderSetup(root) {
     var setup = program.setup;
     if (!setup) return;
-    var sec = el('section', { class: 'section' });
+    var sec = el('section', { class: 'section', id: 'sec-setup' });
     var wrap = el('div', { class: 'wrap' });
 
     wrap.appendChild(el('div', { class: 'section__head' }, [
-      el('div', { class: 'section__num', text: '00' }),
+      el('div', { class: 'section__num', text: '03' }),
       el('div', {}, [
         el('h2', { text: 'Before week 1' }),
         el('p', {
@@ -350,7 +622,7 @@
     var box = el('div', { class: 'runsheet' });
     box.appendChild(el('div', { class: 'runsheet__head' }, [
       el('span', { class: 'eyebrow', style: 'margin:0', text: 'Run sheet' }),
-      el('span', { class: 'mono tiny muted', text: r.total + ' min · ' + r.rows.length + ' blocks' })
+      el('span', { class: 'mono tiny muted', text: fmtDuration(r.total) + ' · ' + r.rows.length + ' blocks' })
     ]));
 
     r.rows.forEach(function (row) {
@@ -570,10 +842,10 @@
 
   function renderToday(root) {
     var next = findToday();
-    var sec = el('section', { class: 'section no-print' });
+    var sec = el('section', { class: 'section no-print', id: 'sec-today' });
     var wrap = el('div', { class: 'wrap' });
     wrap.appendChild(el('div', { class: 'section__head' }, [
-      el('div', { class: 'section__num', text: '01' }),
+      el('div', { class: 'section__num', text: '04' }),
       el('div', {}, [el('h2', { text: next && next.today ? 'Today' : 'Next session' })])
     ]));
 
@@ -607,7 +879,11 @@
         ]),
         el('div', { style: 'text-align:right' }, [
           el('div', { class: 'mono small', text: P.fmtDate(s.date) }),
-          el('div', { class: 'mono small muted', text: fmtDuration(s.minutes) + ' · week ' + w.number })
+          el('div', {
+            class: 'mono small muted',
+            text: fmtDuration(s.minutes) + ' · week ' + w.number +
+              (s.blocks > 1 ? ' · sitting ' + s.block + ' of ' + s.blocks + ' today' : '')
+          })
         ])
       ])
     ]);
@@ -660,6 +936,17 @@
       }));
     }
 
+    /* One teaching note per session, rotating through the idea, the
+       mechanism, the misunderstanding and the self-check. Ninety seconds of
+       reading before you start, so the hour is spent on something you
+       understand rather than on following instructions. */
+    if (s.lesson) {
+      card.appendChild(el('div', { class: 'lesson' }, [
+        el('span', { class: 'eyebrow', style: 'margin:0', text: s.lesson.label }),
+        el('p', { class: 'lesson__text', text: s.lesson.text })
+      ]));
+    }
+
     card.appendChild(renderRunsheet(s));
     card.appendChild(renderRecord(w, s));
 
@@ -672,7 +959,7 @@
 
   function renderVerdict(root) {
     var v = program.verdict;
-    var sec = el('section', { class: 'section' });
+    var sec = el('section', { class: 'section', id: 'sec-verdict' });
     var wrap = el('div', { class: 'wrap' });
     wrap.appendChild(el('div', { class: 'section__head' }, [
       el('div', { class: 'section__num', text: '02' }),
@@ -767,21 +1054,26 @@
   /* -------------------------------------------------------------- phases */
 
   function renderPhases(root) {
-    var sec = el('section', { class: 'section' });
+    var sec = el('section', { class: 'section', id: 'sec-phases' });
     var wrap = el('div', { class: 'wrap' });
     wrap.appendChild(el('div', { class: 'section__head' }, [
-      el('div', { class: 'section__num', text: '03' }),
+      el('div', { class: 'section__num', text: '05' }),
       el('div', {}, [
         el('h2', { text: 'Phases' }),
         el('p', {
           class: 'lede', style: 'margin-top:1rem',
-          text: 'Each phase ends at a gate. You move on when you can do the things listed, not when ' +
-            'the weeks run out. If a gate does not pass, repeat the last week of the phase.'
+          text: 'Each phase opens with the idea it is teaching, then the work, then a gate. Gates ' +
+            'unlock in order: the next one stays shut until this one passes in full. You move on ' +
+            'when you can do the things listed, not when the weeks run out — and if a gate does not ' +
+            'pass, you repeat the last week of the phase.'
         })
       ])
     ]));
 
-    program.phases.forEach(function (ph) {
+    var locks = window.Stats.gateLocks(program, progress);
+
+    program.phases.forEach(function (ph, phIdx) {
+      var lock = locks[phIdx];
       var node = el('article', { class: 'phase' });
       node.appendChild(el('div', { class: 'phase__head' }, [
         el('div', { class: 'phase__index', text: 'PHASE ' + String(ph.index).padStart(2, '0') }),
@@ -796,10 +1088,47 @@
         ]),
         el('div', { class: 'phase__stats' }, [
           el('div', { text: 'Weeks ' + ph.weekStart + '–' + ph.weekEnd }),
-          el('div', { text: ph.hours + ' hours' }),
+          el('div', { text: ph.hours + ' practice hours in total' }),
           el('div', { text: P.fmtShort(ph.startDate) + ' → ' + P.fmtShort(ph.endDate) })
         ])
       ]));
+
+      /* The teaching note. A phase that only lists drills tells you what to do
+         and nothing about what you are meant to be learning. */
+      if (ph.teaching) {
+        var t = ph.teaching;
+        var brief = el('div', { class: 'brief' }, [
+          el('span', { class: 'eyebrow', text: 'What this phase is actually teaching' }),
+          el('p', { class: 'brief__idea', text: t.idea }),
+          el('div', { class: 'brief__grid' }, [
+            el('div', {}, [
+              el('span', { class: 'brief__label', text: 'Why it works' }),
+              el('p', { class: 'brief__text', text: t.why })
+            ]),
+            el('div', {}, [
+              el('span', { class: 'brief__label', text: 'The version that does not work' }),
+              el('p', { class: 'brief__text', text: t.misread })
+            ]),
+            el('div', {}, [
+              el('span', { class: 'brief__label', text: 'How to check your own work' }),
+              el('p', { class: 'brief__text', text: t.tell })
+            ])
+          ])
+        ]);
+        if (t.terms && t.terms.length) {
+          var terms = el('div', { class: 'brief__terms' }, [
+            el('span', { class: 'brief__label', text: 'Vocabulary you will meet' })
+          ]);
+          var tdl = el('dl', { class: 'defs defs--tight' });
+          t.terms.forEach(function (tm) {
+            tdl.appendChild(el('dt', { text: tm.term }));
+            tdl.appendChild(el('dd', { text: tm.meaning }));
+          });
+          terms.appendChild(tdl);
+          brief.appendChild(terms);
+        }
+        node.appendChild(brief);
+      }
 
       var body = el('div', { class: 'phase__body' });
 
@@ -871,15 +1200,45 @@
         }));
       }
 
-      var gate = el('div', { class: 'gate' });
-      gate.appendChild(el('div', { class: 'gate__title', text: 'Gate: ' + ph.milestone.name }));
+      /* Gates open in order. A locked gate still shows its criteria — you
+         should know what you are working toward — but it cannot be ticked,
+         and it says exactly what is holding it shut. */
+      var gate = el('div', { class: 'gate', 'data-locked': String(lock.locked) });
+      gate.appendChild(el('div', { class: 'gate__head' }, [
+        el('div', { class: 'gate__title', text: 'Gate: ' + ph.milestone.name }),
+        el('span', {
+          class: 'gate__state',
+          'data-state': lock.locked ? 'locked' : (lock.complete ? 'passed' : 'open'),
+          text: lock.locked ? 'Locked' : (lock.complete ? 'Passed' : lock.passed + ' of ' + lock.criteria)
+        })
+      ]));
+
+      if (lock.locked) {
+        var prev = lock.blockedBy;
+        gate.appendChild(el('p', { class: 'gate__lockline' }, [
+          document.createTextNode(
+            'Shut until phase ' + prev.index + ' passes. "' + prev.milestone.name + '" has ' +
+            locks[phIdx - 1].passed + ' of ' + locks[phIdx - 1].criteria +
+            ' criteria ticked. The plan\'s claim is that this phase is built on that one, so ' +
+            'claiming this gate first would not mean anything.'
+          )
+        ]));
+        gate.appendChild(el('a', {
+          class: 'walk__link', href: '#sec-phases', text: 'Go to phase ' + prev.index + '’s gate →',
+          onclick: jumpTo('gate-' + prev.index)
+        }));
+      }
+
+      var list = el('div', { class: 'gate__list', id: 'gate-' + ph.index });
       ph.milestone.criteria.forEach(function (c, idx) {
         var k = gateKey(ph, idx);
-        gate.appendChild(el('label', { class: 'check' }, [
+        list.appendChild(el('label', { class: 'check' }, [
           el('input', {
             type: 'checkbox',
             checked: progress.gates[k] ? 'checked' : null,
+            disabled: lock.locked ? 'disabled' : null,
             onchange: function () {
+              if (lock.locked) return;
               progress = window.Store.toggleGateCriterion(program.id, k);
               render();
             }
@@ -887,6 +1246,7 @@
           el('span', { text: c })
         ]));
       });
+      gate.appendChild(list);
       node.appendChild(gate);
       wrap.appendChild(node);
     });
@@ -899,11 +1259,11 @@
 
   function renderTranscript(root) {
     var t = window.Stats.transcript(program, progress);
-    var sec = el('section', { class: 'section' });
+    var sec = el('section', { class: 'section', id: 'sec-transcript' });
     var wrap = el('div', { class: 'wrap' });
 
     wrap.appendChild(el('div', { class: 'section__head' }, [
-      el('div', { class: 'section__num', text: '04' }),
+      el('div', { class: 'section__num', text: '06' }),
       el('div', {}, [
         el('h2', { text: 'Transcript' }),
         el('p', {
@@ -963,7 +1323,12 @@
         el('td', { class: 'num', text: m.sessionsDone + '/' + m.sessions }),
         el('td', { class: 'num', text: m.criteriaPassed + '/' + m.criteria }),
         el('td', { class: 'num transcript__credits', text: m.earned + '/' + m.credits }),
-        el('td', {}, [el('span', { class: 'pill pill--' + (m.awarded ? 'awarded' : (m.sessionsDone ? 'open' : 'idle')), text: m.status })])
+        el('td', {}, [el('span', {
+          class: 'pill pill--' + (m.awarded
+            ? 'awarded'
+            : m.locked ? 'locked' : (m.sessionsDone ? 'open' : 'idle')),
+          text: m.status
+        })])
       ]));
     });
     wrap.appendChild(el('div', { class: 'transcript-scroll' }, [table]));
@@ -987,12 +1352,12 @@
   /* ------------------------------------------------------------ schedule */
 
   function renderSchedule(root) {
-    var sec = el('section', { class: 'section' });
+    var sec = el('section', { class: 'section', id: 'sec-schedule' });
     var wrap = el('div', { class: 'wrap' });
     var now = new Date();
 
     wrap.appendChild(el('div', { class: 'section__head' }, [
-      el('div', { class: 'section__num', text: '05' }),
+      el('div', { class: 'section__num', text: '07' }),
       el('div', {}, [
         el('h2', { text: 'Week by week' }),
         el('p', {
@@ -1043,7 +1408,7 @@
           document.createTextNode(w.theme),
           isCurrent ? el('span', { class: 'tag tag--accent', style: 'margin-left:0.5rem', text: 'current' }) : null
         ]),
-        el('span', { class: 'week__hours', text: doneCount + '/' + w.sessions.length + ' · ' + w.hours + ' h' })
+        el('span', { class: 'week__hours', text: doneCount + '/' + w.sessions.length + ' · ' + fmtDuration(w.minutes) })
       ]);
       node.appendChild(head);
 
@@ -1058,7 +1423,12 @@
       w.sessions.forEach(function (s) {
         var key = sessionKey(w, s);
         body.appendChild(el('div', { class: 'session' }, [
-          el('span', { class: 'session__date', text: P.fmtShort(s.date) }),
+          el('span', { class: 'session__date' }, [
+            document.createTextNode(P.fmtShort(s.date)),
+            s.blocks > 1
+              ? el('span', { class: 'session__block', text: 'sitting ' + s.block + '/' + s.blocks })
+              : null
+          ]),
           el('span', { class: 'session__type', 'data-t': s.type.key, text: s.type.label }),
           el('span', { class: 'session__focus' }, [
             document.createTextNode(s.title),
@@ -1110,11 +1480,11 @@
 
   function renderReference(root) {
     var d = program.discipline;
-    var sec = el('section', { class: 'section' });
+    var sec = el('section', { class: 'section', id: 'sec-reference' });
     var wrap = el('div', { class: 'wrap' });
 
     wrap.appendChild(el('div', { class: 'section__head' }, [
-      el('div', { class: 'section__num', text: '06' }),
+      el('div', { class: 'section__num', text: '08' }),
       el('div', {}, [el('h2', { text: 'Reference' })])
     ]));
 
@@ -1182,11 +1552,11 @@
   /* ------------------------------------------------------------------ log */
 
   function renderLog(root) {
-    var sec = el('section', { class: 'section' });
+    var sec = el('section', { class: 'section', id: 'sec-log' });
     var wrap = el('div', { class: 'wrap' });
 
     wrap.appendChild(el('div', { class: 'section__head' }, [
-      el('div', { class: 'section__num', text: '07' }),
+      el('div', { class: 'section__num', text: '09' }),
       el('div', {}, [
         el('h2', { text: 'Session log' }),
         el('p', {
@@ -1299,9 +1669,10 @@
     var scrollY = window.scrollY;
     root.innerHTML = '';
     renderHead(root);
+    renderWalkthrough(root);
+    renderVerdict(root);
     renderSetup(root);
     renderToday(root);
-    renderVerdict(root);
     renderPhases(root);
     renderTranscript(root);
     renderSchedule(root);

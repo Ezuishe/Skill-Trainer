@@ -76,13 +76,14 @@
     /* `records` holds what you thought of a session: a score, how hard it felt,
      * and a note. `sessions` stays the simple done-marker so older saved
      * progress keeps working. */
-    return { id: id, sessions: {}, gates: {}, logs: [], hours: 0, records: {} };
+    return { id: id, sessions: {}, gates: {}, logs: [], hours: 0, records: {}, steps: {} };
   }
 
   function getProgress(id) {
     var p = read(KEYS.progress, null);
     if (!p || p.id !== id) return blankProgress(id);
     if (!p.records) p.records = {};
+    if (!p.steps) p.steps = {};
     return p;
   }
 
@@ -97,6 +98,15 @@
       p.sessions[key] = todayKey();
       p.hours = Math.round((p.hours + hours) * 10) / 10;
     }
+    return setProgress(p);
+  }
+
+  /* The two walkthrough steps that are acknowledgements rather than work:
+   * reading the verdict and finishing the setup. Everything else in the
+   * walkthrough is inferred from sessions you actually logged. */
+  function markStep(id, key, on) {
+    var p = getProgress(id);
+    if (on) p.steps[key] = todayKey(); else delete p.steps[key];
     return setProgress(p);
   }
 
@@ -197,6 +207,7 @@
     getRecord: getRecord,
     clearRecord: clearRecord,
     toggleGateCriterion: toggleGateCriterion,
+    markStep: markStep,
     addLog: addLog,
     deleteLog: deleteLog,
     getDispatch: getDispatch,

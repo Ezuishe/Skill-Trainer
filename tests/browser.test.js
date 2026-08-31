@@ -141,6 +141,49 @@ function watch(page, label) {
   const setupSection = await page.locator('h2:has-text("Before week 1")').count();
   if (!setupSection) problems.push('Before week 1 section missing');
 
+  // "I am still lost when trying to figure out the plan": there must be an
+  // explicit, ordered walkthrough with a live step count and a glossary.
+  const walkSteps = await page.locator('.walk__step').count();
+  const walkCurrent = await page.locator('.walk__step[data-state="current"]').count();
+  const walkBar = await page.locator('.walk__bar').innerText();
+  const defs = await page.locator('.walk__gloss .defs dt').count();
+  console.log(`walkthrough steps: ${walkSteps} | current: ${walkCurrent} | bar: ${walkBar.replace(/\n/g, ' ')} | glossary terms: ${defs}`);
+  if (walkSteps < 6) problems.push(`walkthrough should list every step, got ${walkSteps}`);
+  if (walkCurrent !== 1) problems.push(`exactly one walkthrough step should be current, got ${walkCurrent}`);
+  if (defs < 5) problems.push(`glossary should define the plan's own vocabulary, got ${defs}`);
+  const walkText = await page.locator('.walk').innerText();
+  for (const word of ['Gate', 'Run sheet', 'Credit', 'Baseline']) {
+    if (!walkText.includes(word)) problems.push(`walkthrough glossary missing "${word}"`);
+  }
+
+  // "make the gates locked and only unlocked after previous is finished"
+  const gateStates = await page.locator('.gate').evaluateAll(
+    nodes => nodes.map(n => n.getAttribute('data-locked')));
+  const lockedInputs = await page.locator('.gate[data-locked="true"] input[disabled]').count();
+  const openInputs = await page.locator('.gate[data-locked="false"] input:not([disabled])').count();
+  console.log('gate lock states:', gateStates.join(','), '| disabled criteria:', lockedInputs);
+  if (gateStates[0] !== 'false') problems.push('the first gate must start unlocked');
+  if (gateStates.slice(1).some(s => s !== 'true')) problems.push('later gates must start locked');
+  if (!lockedInputs) problems.push('locked gate criteria are still tickable');
+  if (!openInputs) problems.push('the open gate has no tickable criteria');
+  const lockLine = await page.locator('.gate__lockline').first().innerText();
+  if (!/phase \d/i.test(lockLine)) problems.push('locked gate does not name what is blocking it');
+
+  // "it's still not educational enough": every phase must teach, not just list
+  const briefs = await page.locator('.brief').count();
+  const briefTerms = await page.locator('.brief__terms .defs dt').count();
+  const lesson = await page.locator('.section.no-print .card .lesson').count();
+  const phaseCount = await page.locator('.phase').count();
+  console.log(`teaching briefs: ${briefs}/${phaseCount} | vocabulary entries: ${briefTerms} | session lesson: ${lesson}`);
+  if (briefs !== phaseCount) problems.push(`every phase needs a teaching brief, got ${briefs} of ${phaseCount}`);
+  if (briefTerms < phaseCount * 3) problems.push(`expected 3 terms per phase, got ${briefTerms}`);
+  if (!lesson) problems.push('session card carries no teaching note');
+  // CSS uppercases the labels, so compare lowercased.
+  const briefText = (await page.locator('.brief').first().innerText()).toLowerCase();
+  for (const heading of ['why it works', 'does not work', 'check your own work']) {
+    if (!briefText.includes(heading)) problems.push(`teaching brief missing "${heading}"`);
+  }
+
   // retention: the status panel must show earned numbers, not decoration
   const statusPanel = await page.locator('.status').count();
   if (!statusPanel) problems.push('status panel missing');

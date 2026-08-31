@@ -51,6 +51,17 @@
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
   function round1(v) { return Math.round(v * 10) / 10; }
 
+  /* "2.17 hours" is not how anyone describes a session, and a bare number of
+   * minutes in the hundreds gets read as hours. One formatter, used
+   * everywhere a single sitting is described. */
+  function fmtDuration(mins) {
+    var m = Math.max(0, Math.round(mins));
+    if (m < 60) return m + ' min';
+    var h = Math.floor(m / 60);
+    var rest = m % 60;
+    return rest ? h + 'h ' + rest + 'm' : h + 'h';
+  }
+
   function addDays(date, days) {
     var d = new Date(date.getTime());
     d.setDate(d.getDate() + days);
@@ -84,6 +95,15 @@
       .sort(function (a, b) { return b.frac - a.frac; });
     for (var k = 0; k < remainder; k++) floors[order[k % order.length].i]++;
     return floors;
+  }
+
+  /* Same, but nothing comes out below `minEach`. A run sheet row of zero
+   * minutes is not a row. */
+  function apportionMin(weights, total, minEach) {
+    var n = weights.length;
+    var floorTotal = n * minEach;
+    if (total <= floorTotal) return apportion(new Array(n).fill(1), total);
+    return apportion(weights, total - floorTotal).map(function (v) { return v + minEach; });
   }
 
   function levelFor(discipline, hours) {
@@ -180,10 +200,31 @@
         'reason. Take them.'
       );
     }
-    if (input.hoursPerWeek / input.daysPerWeek > 4) {
+    var bp = blockPlan(input);
+    if (bp.mergedDays) {
       v.warnings.push(
-        'Your sessions come out over four hours. The back half of a session that long is rarely ' +
-        'worth much. Spread the same hours across more days if you can.'
+        input.hoursPerWeek + ' hours split ' + input.daysPerWeek + ' ways is about ' +
+        fmtDuration(Math.round(bp.workMinutes / input.daysPerWeek)) + ' a day, which is not long ' +
+        'enough to warm up, let alone practise. The schedule uses ' + bp.trainingDays + ' training day' +
+        (bp.trainingDays === 1 ? '' : 's') + ' a week of ' + fmtDuration(bp.blockMinutes) +
+        ' instead, spread across the week. Same hours, sessions long enough to be worth sitting down for.'
+      );
+    }
+    if (bp.overLong) {
+      v.warnings.push(
+        'To fit ' + input.hoursPerWeek + ' hours into ' + input.daysPerWeek + ' day' +
+        (input.daysPerWeek === 1 ? '' : 's') + ', the schedule has to run ' + bp.blocksPerDay +
+        ' sittings a day of about ' + fmtDuration(bp.blockMinutes) + ' each. Past roughly two and a ' +
+        'half hours a sitting the attention needed for deliberate practice is gone, so treat those ' +
+        'numbers as what you asked for rather than what will work. Spreading the same hours across ' +
+        'more days is the fix.'
+      );
+    } else if (bp.blocksPerDay > 1) {
+      v.warnings.push(
+        'At ' + input.hoursPerWeek + ' hours across ' + input.daysPerWeek + ' day' +
+        (input.daysPerWeek === 1 ? '' : 's') + ', each training day is split into ' + bp.blocksPerDay +
+        ' sittings of about ' + fmtDuration(bp.blockMinutes) + '. Put a real break between them — ' +
+        'a long unbroken block turns into reading rather than practice.'
       );
     }
     if (input.weeks < 4) {
@@ -296,7 +337,8 @@
         stages: w.pillar.stages || [],
         standard: w.pillar.standard || '',
         drills: w.pillar.drills,
-        milestone: w.pillar.milestone
+        milestone: w.pillar.milestone,
+        teaching: (window.PILLAR_TEACHING || {})[discipline.id + '/' + w.pillar.id] || null
       });
       weekCursor += weeks;
     });
@@ -328,61 +370,133 @@
     }
   };
 
-  function weekTemplate(phase, input) {
-    var sessions = input.daysPerWeek;
-    var reserveReview = sessions >= 3 ? 1 : 0;
+  /* Nobody gets eight hours of training out of eight hours in one chair, and a
+   * schedule that prints one is why people saw a single session hundreds of
+   * minutes long. A day's practice is split into sittings with a hard ceiling
+   * on each: twelve hours over three days becomes six sittings of two hours,
+   * not three four-hour marathons. */
+  var MAX_BLOCK_MIN = 150;
+  var MAX_BLOCKS_PER_DAY = 4;
+
+  /* And the other end: eight minutes is not a training session, it is a
+   * reminder that you own a plan. Below this, days get merged rather than
+   * shaved, so five hours over seven days becomes four real sittings. */
+  var MIN_BLOCK_MIN = 25;
+
+  function blockPlan(input) {
+    var days = clamp(parseInt(input.daysPerWeek, 10) || 5, 1, 7);
+    var weekMinutes = Math.max(days, Math.round((parseFloat(input.hoursPerWeek) || 6) * 60));
 
     /* A weekly review is scoring, not practice. Giving it a full-length slot
      * put people in front of a 108-minute "review the week" session, which
-     * nobody does. Cap it at half an hour and hand the rest to the sessions
-     * that are actually training.
-     *
-     * Allocation happens in whole minutes so the week sums to exactly the
-     * hours asked for, instead of drifting by a tenth per session. */
-    var weekMinutes = Math.round(input.hoursPerWeek * 60);
+     * nobody does — and giving it a whole day of its own pushed every other
+     * day longer. Half an hour, tacked onto the last training day. */
+    var reserveReview = days >= 3 ? 1 : 0;
     var reviewMinutes = reserveReview
-      ? Math.min(30, Math.floor(weekMinutes / sessions))
+      ? clamp(Math.floor(weekMinutes * 0.08), 10, 30)
       : 0;
-    var workCount = Math.max(1, sessions - reserveReview);
-    var workSplit = apportion(
-      new Array(workCount).fill(1),
-      Math.max(workCount, weekMinutes - reviewMinutes)
-    );
-    var remaining = sessions - reserveReview;
+    var workMinutes = Math.max(1, weekMinutes - reviewMinutes);
+
+    /* Days you actually train. Fewer than requested when the hours will not
+     * make a real sitting on each of them. */
+    var trainingDays = clamp(Math.floor(workMinutes / MIN_BLOCK_MIN), 1, days);
+    var perDay = workMinutes / trainingDays;
+    var blocksPerDay = clamp(Math.ceil(perDay / MAX_BLOCK_MIN), 1, MAX_BLOCKS_PER_DAY);
+    var blocks = trainingDays * blocksPerDay;
+
+    /* Spread the training days across the week the user asked for, so two
+     * days out of seven land on Monday and Thursday rather than Monday and
+     * Tuesday. */
+    var weekdays = [];
+    for (var i = 0; i < trainingDays; i++) {
+      weekdays.push(trainingDays === 1
+        ? 1
+        : Math.round((i * (days - 1)) / (trainingDays - 1)) + 1);
+    }
+
+    return {
+      days: days,
+      trainingDays: trainingDays,
+      weekdays: weekdays,
+      mergedDays: trainingDays < days,
+      blocksPerDay: blocksPerDay,
+      blocks: blocks,
+      weekMinutes: weekMinutes,
+      workMinutes: workMinutes,
+      reviewMinutes: reviewMinutes,
+      reserveReview: reserveReview,
+      blockMinutes: Math.round(workMinutes / blocks),
+      /* True when even the maximum number of sittings cannot get a single one
+       * under the ceiling. The verdict says so rather than printing it
+       * quietly. */
+      overLong: Math.round(workMinutes / blocks) > MAX_BLOCK_MIN
+    };
+  }
+
+  function weekTemplate(phase, input) {
+    var bp = blockPlan(input);
+
+    /* Allocation happens in whole minutes so the week sums to exactly the
+     * hours asked for, instead of drifting by a tenth per session. */
+    var workSplit = apportion(new Array(bp.blocks).fill(1), bp.workMinutes);
     var counts = apportion(
       [phase.mix.acquire, phase.mix.drill, phase.mix.produce],
-      remaining
+      bp.blocks
     );
-    var list = [];
-    for (var a = 0; a < counts[0]; a++) list.push('acquire');
-    for (var d = 0; d < counts[1]; d++) list.push('drill');
-    for (var p = 0; p < counts[2]; p++) list.push('produce');
-
-    /* Interleave rather than block: acquire, drill, produce, drill, ... keeps
-     * spacing between same-type sessions, which the retention literature
-     * consistently favours. */
-    var ordered = [];
-    var buckets = { acquire: [], drill: [], produce: [] };
-    list.forEach(function (t) { buckets[t].push(t); });
-    var cycle = ['acquire', 'drill', 'produce', 'drill'];
-    var guard = 0;
-    while (ordered.length < list.length && guard < 100) {
-      cycle.forEach(function (t) {
-        if (buckets[t].length && ordered.length < list.length) ordered.push(buckets[t].pop());
+    /* Interleave rather than block. Each type is laid on its own evenly
+     * spaced grid and the grids are merged, so four acquires and two produces
+     * come out spread through the week instead of stacked at one end. Mixed
+     * practice feels worse and works better, and a week that ends in three
+     * identical sessions is not mixed. */
+    var marks = [];
+    ['acquire', 'drill', 'produce'].forEach(function (type, t) {
+      var c = counts[t];
+      for (var i = 0; i < c; i++) {
+        marks.push({ type: type, at: (i + 0.5) / c, size: c });
+      }
+    });
+    marks.sort(function (a, b) {
+      return a.at - b.at || b.size - a.size;
+    });
+    var ordered = marks.map(function (m) { return m.type; });
+    /* Lay the blocks out day by day, then hand the weekly review the last
+     * slot on the last day rather than a day of its own. */
+    var out = [];
+    var idx = 0;
+    bp.weekdays.forEach(function (day) {
+      for (var b = 0; b < bp.blocksPerDay; b++) {
+        out.push({
+          weekday: day,
+          type: SESSION_TYPES[ordered[idx]],
+          minutes: workSplit[idx],
+          hours: Math.round((workSplit[idx] / 60) * 100) / 100
+        });
+        idx++;
+      }
+    });
+    if (bp.reserveReview) {
+      out.push({
+        weekday: bp.weekdays[bp.weekdays.length - 1],
+        type: SESSION_TYPES.review,
+        minutes: bp.reviewMinutes,
+        hours: Math.round((bp.reviewMinutes / 60) * 100) / 100
       });
-      guard++;
     }
-    if (reserveReview) ordered.push('review');
 
-    var workIdx = 0;
-    return ordered.map(function (type, i) {
-      var mins = type === 'review' ? reviewMinutes : workSplit[workIdx++];
-      return {
-        day: i + 1,
-        type: SESSION_TYPES[type],
-        minutes: mins,
-        hours: Math.round((mins / 60) * 100) / 100
-      };
+    /* `day` is the ordinal across the week and is what progress is keyed on;
+     * `block` is which sitting of that day this is, which is what a person
+     * needs to read on a two-sitting Tuesday. */
+    var perDayCount = {};
+    out.forEach(function (s) {
+      perDayCount[s.weekday] = (perDayCount[s.weekday] || 0) + 1;
+    });
+    var seen = {};
+    return out.map(function (s, i) {
+      seen[s.weekday] = (seen[s.weekday] || 0) + 1;
+      s.day = i + 1;
+      s.block = seen[s.weekday];
+      s.blocks = perDayCount[s.weekday];
+      return s;
     });
   }
 
@@ -495,6 +609,25 @@
     }
   }
 
+  /* One teaching note per session, rotating through the four so that a week
+   * of practice also walks you through the idea, the mechanism, the usual
+   * misunderstanding and the self-check. A session that only tells you what
+   * to do teaches you nothing about why. */
+  var LESSON_SLOTS = {
+    acquire: { key: 'idea', label: 'The idea behind this phase' },
+    drill: { key: 'why', label: 'Why this kind of practice works' },
+    produce: { key: 'tell', label: 'How to tell whether you have got it' },
+    review: { key: 'misread', label: 'The version of this that does not work' }
+  };
+
+  function lessonFor(phase, typeKey, isFirstOfPlan) {
+    var t = phase.teaching;
+    if (!t) return null;
+    var slot = isFirstOfPlan ? LESSON_SLOTS.acquire : (LESSON_SLOTS[typeKey] || LESSON_SLOTS.acquire);
+    if (!t[slot.key]) return null;
+    return { label: slot.label, text: t[slot.key] };
+  }
+
   /* ------------------------------------------------------------ schedule */
 
   function buildSchedule(discipline, input, phases, startDate) {
@@ -512,14 +645,18 @@
         var sessions = weekTemplate(phase, input).map(function (s) {
           var work = sessionWork(discipline, phase, s, w, stageInfo, objective);
           var isFirst = absolute === 1 && s.day === 1;
+          /* A lighter week is a shorter session, not a token one: below about
+           * a quarter of an hour there is no room for the steps. */
+          var mins = isConsolidation ? Math.max(15, Math.round(s.minutes * 0.6)) : s.minutes;
           return {
             day: s.day,
-            date: addDays(weekStart, s.day - 1),
+            weekday: s.weekday,
+            block: s.block,
+            blocks: s.blocks,
+            date: addDays(weekStart, s.weekday - 1),
             type: s.type,
-            minutes: isConsolidation ? Math.round(s.minutes * 0.6) : s.minutes,
-            hours: isConsolidation
-              ? Math.round((s.minutes * 0.6 / 60) * 100) / 100
-              : s.hours,
+            minutes: mins,
+            hours: Math.round((mins / 60) * 100) / 100,
             title: work.title,
             detail: work.detail,
             steps: work.steps || null,
@@ -527,9 +664,10 @@
             drill: work.drill,
             stage: stageInfo,
             first: isFirst,
-            plan: sessionPlan({ minutes: isConsolidation ? Math.round(s.minutes * 0.6) : s.minutes, type: s.type }, isFirst),
+            lesson: lessonFor(phase, s.type.key, isFirst),
+            plan: sessionPlan({ minutes: mins, type: s.type }, isFirst),
             runsheet: sessionRunsheet({
-              minutes: isConsolidation ? Math.round(s.minutes * 0.6) : s.minutes,
+              minutes: mins,
               type: s.type,
               steps: work.steps,
               drill: work.drill,
@@ -546,7 +684,8 @@
           startDate: weekStart,
           endDate: addDays(weekStart, 6),
           consolidation: isConsolidation,
-          hours: round1(sessions.reduce(function (a, s) { return a + s.hours; }, 0)),
+          minutes: sessions.reduce(function (a, s) { return a + s.minutes; }, 0),
+          hours: round1(sessions.reduce(function (a, s) { return a + s.minutes; }, 0) / 60),
           sessions: sessions,
           gate: w === phase.weeks - 1 ? phase.milestone : null,
           theme: isConsolidation
@@ -693,7 +832,7 @@
         var repShares = [OPEN_SHARE]
           .concat(new Array(doseCount).fill(bodyShare / doseCount))
           .concat([CLOSE_SHARE]);
-        var repSplit = apportion(repShares, total);
+        var repSplit = apportionMin(repShares, total, 1);
         rows.push({ label: open.label, detail: open.detail, kind: 'open', minutes: repSplit[0] });
         for (var r = 0; r < doseCount; r++) {
           rows.push({
@@ -711,7 +850,7 @@
         var drillBody = session.drill
           ? { label: session.drill.name, detail: session.drill.protocol, dose: session.drill.dose }
           : { label: 'The work', detail: session.title };
-        var split3 = apportion([OPEN_SHARE, bodyShare, CLOSE_SHARE], total);
+        var split3 = apportionMin([OPEN_SHARE, bodyShare, CLOSE_SHARE], total, 1);
         rows = [
           { label: open.label, detail: open.detail, kind: 'open', minutes: split3[0] },
           { label: drillBody.label, detail: drillBody.detail, kind: 'work', dose: drillBody.dose, minutes: split3[1] },
@@ -725,7 +864,7 @@
       var shares = [OPEN_SHARE]
         .concat(weights.map(function (w) { return bodyShare * (w.weight / weightTotal); }))
         .concat([CLOSE_SHARE]);
-      var split = apportion(shares, total);
+      var split = apportionMin(shares, total, 1);
 
       rows.push({ label: open.label, detail: open.detail, kind: 'open', minutes: split[0] });
       steps.forEach(function (text, i) {
@@ -767,7 +906,7 @@
     var minutes = Math.max(4, session.minutes || Math.round(session.hours * 60));
     var shape = SESSION_SHAPES[isFirstOfPlan ? 'first' : session.type.key] || SESSION_SHAPES.acquire;
     /* Whole minutes, summing exactly to the session length. */
-    var split = apportion(shape.map(function (r) { return r.share; }), minutes);
+    var split = apportionMin(shape.map(function (r) { return r.share; }), minutes, 1);
     return shape.map(function (r, i) {
       return { name: r.name, minutes: split[i], note: r.note };
     });
@@ -810,7 +949,8 @@
       discipline: discipline,
       totalHours: Math.round(totalHours),
       sessionCount: schedule.reduce(function (a, w) { return a + w.sessions.length; }, 0),
-      sessionLength: round1(hoursPerWeek / daysPerWeek),
+      blockPlan: blockPlan(normalized),
+      sessionLength: round1(blockPlan(normalized).blockMinutes / 60),
       startDate: startDate,
       endDate: addDays(startDate, weeks * 7 - 1),
       setup: (window.DISCIPLINE_SETUP || {})[discipline.id] || null,
@@ -832,7 +972,13 @@
       p.totalHours + ' hours**');
     L.push('- **Starting point:** ' + p.levelLabel);
     L.push('- **Dates:** ' + fmtDate(p.startDate) + ' → ' + fmtDate(p.endDate));
-    L.push('- **Session:** ' + p.sessionLength + ' h × ' + p.input.daysPerWeek + ' days/week');
+    L.push('- **Shape of the week:** ' + p.blockPlan.trainingDays + ' training day' +
+      (p.blockPlan.trainingDays === 1 ? '' : 's') + ' × ' + p.blockPlan.blocksPerDay +
+      ' sitting' + (p.blockPlan.blocksPerDay === 1 ? '' : 's') + ' of ' +
+      fmtDuration(p.blockPlan.blockMinutes) +
+      (p.blockPlan.reserveReview
+        ? ', plus a ' + fmtDuration(p.blockPlan.reviewMinutes) + ' weekly review'
+        : ''));
     if (p.input.objective) L.push('- **Stated objective:** ' + p.input.objective);
     L.push('');
     L.push('## Feasibility');
@@ -896,6 +1042,23 @@
         fmtShort(ph.startDate) + ' → ' + fmtShort(ph.endDate) + '*');
       L.push('');
       L.push('**Objective:** ' + ph.objective);
+      if (ph.teaching) {
+        L.push('');
+        L.push('**The idea.** ' + ph.teaching.idea);
+        L.push('');
+        L.push('**Why it works.** ' + ph.teaching.why);
+        L.push('');
+        L.push('**The version that does not work.** ' + ph.teaching.misread);
+        L.push('');
+        L.push('**How to check your own work.** ' + ph.teaching.tell);
+        if (ph.teaching.terms && ph.teaching.terms.length) {
+          L.push('');
+          L.push('**Vocabulary**');
+          ph.teaching.terms.forEach(function (t) {
+            L.push('- **' + t.term + '** — ' + t.meaning);
+          });
+        }
+      }
       L.push('');
       L.push('**Competencies**');
       ph.competencies.forEach(function (c) { L.push('- ' + c); });
@@ -913,9 +1076,10 @@
     L.push('');
     p.schedule.forEach(function (w) {
       L.push('**Week ' + w.number + '** (' + fmtShort(w.startDate) + '–' + fmtShort(w.endDate) + ') — ' +
-        w.theme + ' · ' + w.hours + ' h');
+        w.theme + ' · ' + fmtDuration(w.minutes));
       w.sessions.forEach(function (s) {
-        L.push('  - ' + fmtShort(s.date) + ' · ' + s.type.label + ' (' + s.hours + ' h): ' + s.title);
+        L.push('  - ' + fmtShort(s.date) + ' · ' + s.type.label + ' (' + fmtDuration(s.minutes) +
+          (s.blocks > 1 ? ', sitting ' + s.block + ' of ' + s.blocks : '') + '): ' + s.title);
         if (s.detail) L.push('      ' + s.detail);
         if (s.drill) {
           L.push('      Dose: ' + s.drill.dose);
@@ -1010,7 +1174,7 @@
         lines.push('DTSTART;VALUE=DATE:' + icsDate(s.date));
         lines.push('DTEND;VALUE=DATE:' + icsDate(addDays(s.date, 1)));
         lines.push(fold('SUMMARY:' + icsEscape(
-          p.discipline.name + ' · ' + s.type.label + ' (' + s.hours + ' h)'
+          p.discipline.name + ' · ' + s.type.label + ' (' + fmtDuration(s.minutes) + ')'
         )));
         lines.push(fold('DESCRIPTION:' + icsEscape(desc)));
         lines.push('END:VEVENT');
@@ -1037,6 +1201,9 @@
     sessionPlan: sessionPlan,
     sessionRunsheet: sessionRunsheet,
     stepWeight: stepWeight,
+    blockPlan: blockPlan,
+    fmtDuration: fmtDuration,
+    maxBlockMinutes: MAX_BLOCK_MIN,
     toMarkdown: toMarkdown,
     toICS: toICS,
     levels: LEVELS,

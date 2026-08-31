@@ -9,6 +9,8 @@ var root = path.join(__dirname, '..', 'assets', 'js');
   'disciplines-03-building.js', 'disciplines-04-foundation.js',
   'sessions-01-communication.js', 'sessions-02-influence.js',
   'sessions-03-building.js', 'sessions-04-foundation.js',
+  'teaching-01-communication.js', 'teaching-02-influence.js',
+  'teaching-03-building.js', 'teaching-04-foundation.js',
   'setup.js']
   .forEach(function (f) { require(path.join(root, 'data', f)); });
 require(path.join(root, 'data', 'dispatch.js'));
@@ -81,6 +83,23 @@ DISCIPLINES.forEach(function (d) {
     });
   });
 
+  /* Every pillar must also teach. A schedule without an explanation is a
+     to-do list, which is the complaint that produced this layer. */
+  d.pillars.forEach(function (p) {
+    var key = d.id + '/' + p.id;
+    var t = PILLAR_TEACHING[key];
+    check(key + ' has a teaching note', !!t);
+    if (!t) return;
+    ['idea', 'why', 'misread', 'tell'].forEach(function (f) {
+      check(key + '.' + f + ' is written out', !!t[f] && t[f].length > 80 && /[.?]$/.test(t[f]),
+        t[f] ? t[f].slice(0, 40) : 'none');
+    });
+    check(key + ' has >=3 terms', t.terms && t.terms.length >= 3);
+    (t.terms || []).forEach(function (tm) {
+      check(key + '/' + tm.term + ' defined', !!tm.term && !!tm.meaning && tm.meaning.length > 40);
+    });
+  });
+
   /* Getting started. */
   var setup = DISCIPLINE_SETUP[d.id];
   check(d.id + ' has setup', !!setup);
@@ -97,6 +116,9 @@ var validKeys = {};
 DISCIPLINES.forEach(function (d) { d.pillars.forEach(function (p) { validKeys[d.id + '/' + p.id] = 1; }); });
 Object.keys(PILLAR_SESSIONS).forEach(function (k) {
   check('session key ' + k + ' matches a real pillar', !!validKeys[k]);
+});
+Object.keys(PILLAR_TEACHING).forEach(function (k) {
+  check('teaching key ' + k + ' matches a real pillar', !!validKeys[k]);
 });
 
 DISPATCH_TRACKS.forEach(function (t) {
@@ -127,11 +149,28 @@ DISCIPLINES.forEach(function (d) {
             phaseWeeks === p.input.weeks, phaseWeeks + ' vs ' + p.input.weeks);
           check('schedule length ' + d.id, p.schedule.length === p.input.weeks,
             p.schedule.length + ' vs ' + p.input.weeks);
+          var bp = p.blockPlan;
           p.schedule.forEach(function (w) {
             check('sessions per week ' + d.id + ' w' + w.number,
-              w.sessions.length === p.input.daysPerWeek,
-              w.sessions.length + ' vs ' + p.input.daysPerWeek);
+              w.sessions.length === bp.blocks + bp.reserveReview,
+              w.sessions.length + ' vs ' + (bp.blocks + bp.reserveReview));
+            /* The week must sum to the hours asked for, give or take the
+               floors that stop a session being too short to run. */
+            if (!w.consolidation) {
+              check('week sums to the budget ' + d.id + ' w' + w.number,
+                w.minutes === bp.weekMinutes, w.minutes + ' vs ' + bp.weekMinutes);
+            }
+            var days = {};
+            w.sessions.forEach(function (s) { days[s.weekday] = 1; });
+            check('training days within the week ' + d.id,
+              Object.keys(days).length === bp.trainingDays &&
+              Math.max.apply(null, Object.keys(days).map(Number)) <= p.input.daysPerWeek);
             w.sessions.forEach(function (s) {
+              check('no absurd single session ' + d.id,
+                s.minutes <= Math.max(Planner.maxBlockMinutes, bp.blockMinutes),
+                s.type.key + ' ' + s.minutes + ' min');
+              check('no token session ' + d.id, s.minutes >= 10, s.type.key + ' ' + s.minutes + ' min');
+              check('block numbering ' + d.id, s.block >= 1 && s.block <= s.blocks);
               check('session has title', typeof s.title === 'string' && s.title.length > 0);
               check('EVERY session has concrete instructions',
                 (s.steps && s.steps.length >= 3) || !!s.drill,

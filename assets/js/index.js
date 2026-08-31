@@ -162,17 +162,36 @@
     updateSessionLength();
   }
 
+  /* What these numbers actually produce, said before you commit to them. The
+     planner splits long days into sittings and merges days that are too short
+     to be worth sitting down for, so the honest answer is not hours ÷ days. */
   function updateSessionLength() {
+    var P = window.Planner;
     var i = inputs();
-    var per = parseInt(i.hours.value, 10) / parseInt(i.days.value, 10);
-    var mins = Math.round(per * 60);
+    var bp = P.blockPlan({
+      hoursPerWeek: parseInt(i.hours.value, 10),
+      daysPerWeek: parseInt(i.days.value, 10)
+    });
     var node = document.getElementById('session-length');
     if (!node) return;
-    var text = 'Each session runs about ' + (mins >= 90
-      ? (Math.round(per * 10) / 10) + ' hours'
-      : mins + ' minutes') + '.';
-    if (per > 4) text += ' Over four hours in one sitting returns very little; spread these across more days.';
-    else if (mins < 25) text += ' Under twenty-five minutes, most of the session is spent warming up.';
+
+    var text = bp.trainingDays + ' training day' + (bp.trainingDays === 1 ? '' : 's') +
+      ' a week' +
+      (bp.blocksPerDay === 1
+        ? ', one sitting of about ' + P.fmtDuration(bp.blockMinutes)
+        : ', ' + bp.blocksPerDay + ' sittings of about ' + P.fmtDuration(bp.blockMinutes) + ' each') +
+      (bp.reserveReview
+        ? ', plus a ' + P.fmtDuration(bp.reviewMinutes) + ' review at the end of the week.'
+        : '.');
+
+    if (bp.mergedDays) {
+      text += ' Spread across ' + i.days.value + ' days these would be ' +
+        P.fmtDuration(Math.round(bp.workMinutes / parseInt(i.days.value, 10))) +
+        ' each, which is not a session, so the plan uses fewer, longer ones.';
+    } else if (bp.overLong) {
+      text += ' That is past the point where practice stays deliberate. Spread the same hours ' +
+        'across more days if you can.';
+    }
     node.textContent = text;
   }
 
@@ -320,7 +339,7 @@
           document.createTextNode(
             next
               ? next.session.type.label + ' · ' + window.Planner.fmtDate(next.session.date) +
-                ' · ' + next.session.hours + ' h'
+                ' · ' + window.Planner.fmtDuration(next.session.minutes)
               : 'Plan complete'
           ),
           el('span', {

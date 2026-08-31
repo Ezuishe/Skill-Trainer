@@ -25,7 +25,8 @@ not reach, and show the arithmetic.
 ## What's in the curriculum
 
 13 skills · 65 pillars · 260 drills · 1,046 numbered session steps · 195 stages ·
-65 gates with 195 criteria · 6 philosophical tracks × 12 entries.
+65 gates with 195 criteria · 65 teaching briefs · 195 defined terms ·
+6 philosophical tracks × 12 entries.
 
 **Every session tells you what to do.** Earlier versions only had a protocol on
 drill days, which was 25% of sessions; the other 75% were a topic label and a
@@ -36,6 +37,44 @@ tests, so it cannot regress.
 Every discipline also has a **Before week 1** section: the tools you need, where
 the honest feedback will come from, and a baseline to measure now so progress is
 visible later.
+
+## Start here
+
+A plan is only obvious to the person who built it. The program page opens on a
+six-step walkthrough that says what to do first, second and third, with a link
+into the section each step is about:
+
+1. Check the arithmetic before you commit to it
+2. Spend one hour setting up, before any session
+3. Run the first session off the run sheet
+4. Record the session, not just tick it
+5. Close the week with the review session
+6. Sit the gate at the end of the phase
+
+Four of the six tick themselves off work you actually logged — a session marked
+done, a session scored, a weekly review completed, a gate passed — so the panel
+tracks reality rather than a checkbox someone pressed to make it go away. It
+collapses to one line once you are through it.
+
+Underneath sits **the parts of this plan**: phase, gate, session, run sheet,
+stage, credit, baseline, each defined in a sentence. Half the page is nouns, and
+nobody was introduced to them.
+
+## The teaching layer
+
+Every pillar carries a briefing, shown at the top of its phase and rotated
+through its sessions one note at a time:
+
+- **The idea** — the one thing that makes this pillar work
+- **Why it works** — the mechanism, not just the assertion
+- **The version that does not work** — the misunderstanding people arrive with
+- **How to check your own work** — a self-test needing nobody else
+- **Vocabulary** — three terms defined, so the reading stops being fog
+
+Sessions get one of the four each, rotating, so a week of practice also walks
+you through the theory. Acquire sessions get the idea, drills get the mechanism,
+produce sessions get the self-check, and the weekly review gets the
+misunderstanding to check yourself against.
 
 Every pillar carries:
 
@@ -55,6 +94,13 @@ Each phase is a **module** worth credits equal to its practice hours, with a cod
 (`SPK-01`). Credits build as you log sessions and the module is **awarded in
 full** when every gate criterion passes. Hours are attendance; the award is
 evidence, and hours alone never complete a module.
+
+**Gates unlock in order.** A locked gate still shows its criteria — you should
+be able to see what you are working toward — but it cannot be ticked, and it
+says which phase is holding it shut and how many of that gate's criteria are
+still open, with a link to it. The plan's whole claim is that each phase is
+built on the last, so claiming gate three before gate two passes would not mean
+anything.
 
 The transcript lists every module with weeks, sessions done, gate progress,
 credits and status, plus your standing: credits earned of the total and modules
@@ -103,6 +149,25 @@ commits to. Mark four of six sessions too easy and the plan says so:
 
 Scores also produce a trend and a plateau warning: eight or more scored sessions
 with no improvement suggests changing one variable, not three.
+
+## How the week is laid out
+
+Days and sessions are different things. A day can hold more than one sitting,
+and a sitting has a hard ceiling:
+
+- **No sitting runs past 2h 30m.** Twelve hours across three days becomes six
+  sittings of about two hours, not three four-hour marathons.
+- **No sitting runs under 25 minutes.** One hour spread across seven days is
+  eight minutes a day, which is not a session. Those days get merged into fewer,
+  longer ones, spread across the week you asked for.
+- **The weekly review shares the last training day** instead of taking one of
+  its own, so a five-day week is five days of training rather than four plus a
+  half-hour of scoring.
+- If your numbers force something past the ceiling anyway (45 hours in one day),
+  the plan schedules what you asked for and says plainly that it will not work.
+
+Session types are laid on evenly spaced grids and merged, so four acquires and
+two produces come out spread through the week rather than stacked at one end.
 
 ## How a session is spent
 
@@ -195,6 +260,8 @@ assets/js/data/disciplines-03-building.js        software, applied AI, capital
 assets/js/data/disciplines-04-foundation.js      leadership, judgement, learning, consistency
 assets/js/data/sessions-01..04.js                the numbered steps for every
                                                  acquire and produce session
+assets/js/data/teaching-01..04.js                the idea, mechanism, common
+                                                 misreading and vocabulary per pillar
 assets/js/data/setup.js                          tools, arena and baseline per skill
 assets/js/data/dispatch.js       6 traditions × 12 entries
 assets/js/engine.js              the planner: verdict, scope, phases, schedule, exports
@@ -230,7 +297,14 @@ fragment.
 `browser.test.js` additionally checks that the session card does not repeat its heading,
 that stages, drill mistakes, standards and numbered steps render, that the "Before week 1"
 section exists, that your stated objective actually appears in the sessions, and that no
-page scrolls sideways at 390px.
+page scrolls sideways at 390px. It also asserts the walkthrough lists every step with
+exactly one marked current, that the glossary defines the plan's own vocabulary, that the
+first gate is open and every later one is locked with its criteria disabled, and that
+every phase carries a teaching brief with three defined terms.
+
+The planner tests assert that no single session exceeds the sitting ceiling, that none
+falls under ten minutes, and that a normal week sums to exactly the minutes you asked
+for — the arithmetic behind the reported eight-hour session.
 
 ## Data and privacy
 

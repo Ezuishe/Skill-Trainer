@@ -340,8 +340,33 @@
     return letters.slice(0, 3) + '-' + String(index).padStart(2, '0');
   }
 
+  /* Gates open in order. You cannot claim the gate for phase three while
+   * phase two is unpassed, because the plan's whole claim is that each phase
+   * is built on the last. Returns one entry per phase, in phase order. */
+  function gateLocks(program, progress) {
+    var previousOpen = true;
+    return program.phases.map(function (ph, i) {
+      var criteria = ph.milestone.criteria.length;
+      var passed = 0;
+      ph.milestone.criteria.forEach(function (_, c) {
+        if (progress.gates['p' + ph.index + 'c' + c]) passed++;
+      });
+      var entry = {
+        index: ph.index,
+        criteria: criteria,
+        passed: passed,
+        complete: criteria > 0 && passed === criteria,
+        locked: !previousOpen,
+        blockedBy: previousOpen ? null : program.phases[i - 1]
+      };
+      previousOpen = previousOpen && entry.complete;
+      return entry;
+    });
+  }
+
   function transcript(program, progress) {
-    var modules = program.phases.map(function (ph) {
+    var locks = gateLocks(program, progress);
+    var modules = program.phases.map(function (ph, phIdx) {
       var creditsTotal = Math.max(1, Math.round(ph.hours));
 
       var sessions = 0, done = 0, minutesDone = 0;
@@ -382,7 +407,12 @@
         criteria: criteria,
         criteriaPassed: passed,
         awarded: awarded,
-        status: awarded ? 'Awarded' : (done > 0 ? 'In progress' : 'Not started'),
+        locked: locks[phIdx].locked,
+        status: awarded
+          ? 'Awarded'
+          : locks[phIdx].locked
+            ? 'Locked'
+            : (done > 0 ? 'In progress' : 'Not started'),
         weeks: ph.weekStart + '\u2013' + ph.weekEnd
       };
     });
@@ -450,6 +480,7 @@
   window.Stats = {
     build: build,
     transcript: transcript,
+    gateLocks: gateLocks,
     calibration: calibration,
     ladder: ladder,
     thisWeek: thisWeek,
