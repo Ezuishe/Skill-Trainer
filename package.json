@@ -1,0 +1,14 @@
+{
+  "name": "skill-trainer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A planning tool for deliberate practice. Static site; the dependency below is for the browser test harness only.",
+  "scripts": {
+    "serve": "http-server -p 8099 -s .",
+    "test": "node tests/plan.test.js",
+    "test:browser": "node tests/browser.test.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}

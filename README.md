@@ -18,7 +18,7 @@ not reach, and show the arithmetic.
 | Page | Purpose |
 |---|---|
 | `index.html` | The catalogue and the plan builder, with a live feasibility verdict |
-| `program.html` | The generated plan: verdict, phases, stages, gates, dated schedule, progress, log |
+| `program.html` | The generated plan, as a seven-tab workspace: overview, session, curriculum, schedule, assessment, handbook, log |
 | `dispatch.html` | Today's passage, the last fortnight, and anything you kept |
 | `method.html` | How plans are built, where the hour estimates come from, and the limits |
 
@@ -38,27 +38,110 @@ Every discipline also has a **Before week 1** section: the tools you need, where
 the honest feedback will come from, and a baseline to measure now so progress is
 visible later.
 
+## The plan is a workspace, not a scroll
+
+The plan used to render as one continuous page: verdict, setup, session,
+phases, transcript, schedule, reference and log, one after another. Everything
+was on it and almost nothing was findable. It is now seven views behind a tab
+bar, and **only the active one is built**:
+
+| Tab | What is on it |
+|---|---|
+| Overview | Where you stand: pace against the schedule, hours banked, start-here |
+| Session | The one session in front of you, with its run sheet and record |
+| Curriculum | The syllabus — programme specification, module index, module specs |
+| Schedule | Every session, dated, week by week |
+| Assessment | The gates, with their evidence, and the transcript |
+| Handbook | What the hours buy, what to set up before week 1, reference tables |
+| Log | Your written record, the exports, and starting over |
+
+A bar that never leaves the screen carries the plan name, the week you are in,
+sessions logged, and the pace verdict. The tab you left it on and the session
+you were reading both come back on reload, and `program.html#curriculum` links
+straight to a view.
+
+## Sessions open one at a time
+
+A session opens when **the one before it is logged, or its own date arrives**.
+Finishing tonight's sitting opens tomorrow's to read ahead; a Tuesday you missed
+never locks you out of Wednesday, because the plan is a schedule rather than a
+punishment. What it will not do is hand you the whole fortnight on day one.
+
+Under every session card the state is said out loud — *"Session 12 opens when
+you mark this one done, or on 14 Oct, whichever comes first"* becomes *"Next
+session unlocked · [Open session 12]"* — and the navigator gives previous, next,
+and the week as chips with the locked ones visible rather than merely absent.
+
+## Are you ahead or behind?
+
+The question people open a dated plan with, answered on the overview and
+summarised in the bar on every tab. Measured in **sessions**, against the dates
+the plan actually printed: expected counts every session due on or before today,
+so a plan that has not started never reports you behind.
+
+```
+AGAINST THE SCHEDULE
+Behind schedule                        14 logged · 17 due by today
+[███████████████░░░░│░░░░░░░░░░░░░░░░░░░░░░░░░]
+31 Aug          today: 21% of the plan is due            20 Dec
+
+Behind by 3 sessions — roughly 5 days. Do not try to run them all back to
+back. Add one extra session a week until the gap closes.
+
+DRIFT      KEPT TO THE DATE   AT THIS RATE, FINISHES   SESSIONS LEFT
+-3         82%                3 Jan                    66
+```
+
+One track carries both positions: the fill is what you have logged, the hairline
+is where the schedule says you should be. Underneath, a week-by-week chart of
+planned against logged, so a run of short weeks shows up long before it reaches
+the totals.
+
 ## Start here
 
-A plan is only obvious to the person who built it. The program page opens on a
+A plan is only obvious to the person who built it. The overview opens on a
 six-step walkthrough that says what to do first, second and third, with a link
-into the section each step is about:
+into the tab each step is about:
 
 1. Check the arithmetic before you commit to it
 2. Spend one hour setting up, before any session
 3. Run the first session off the run sheet
 4. Record the session, not just tick it
 5. Close the week with the review session
-6. Sit the gate at the end of the phase
+6. Sit the gate at the end of the module
 
 Four of the six tick themselves off work you actually logged — a session marked
 done, a session scored, a weekly review completed, a gate passed — so the panel
 tracks reality rather than a checkbox someone pressed to make it go away. It
 collapses to one line once you are through it.
 
-Underneath sits **the parts of this plan**: phase, gate, session, run sheet,
-stage, credit, baseline, each defined in a sentence. Half the page is nouns, and
-nobody was introduced to them.
+Underneath sits **the parts of this plan**: module, phase, gate, session, run
+sheet, stage, credit, baseline, each defined in a sentence. Half the plan is
+nouns, and nobody was introduced to them.
+
+## The curriculum reads as a course handbook
+
+The Curriculum tab opens on a **programme specification** — field, level on
+entry, exit level at these hours, duration, notional practice hours, contact
+pattern, structure in modules and credits, assessment strategy, what is assumed
+on entry, and the award. That last row says plainly that this is self-certified
+and **not an accredited qualification**: nobody but you signs the transcript,
+which is exactly why the evidence has to be the kind a second person could
+check.
+
+Then a module index, then each module as a specification of its own:
+
+- **Module aim** and a metadata rail — code, weeks, dates, hours, credits, status
+- **Learning outcomes**, numbered, because the gate criteria are marked against them
+- **What this module is actually teaching** — the briefing below
+- **Scheme of work** — how the weeks escalate
+- **Practical work** — the drills, with doses
+- **Delivery** — how the sessions divide between acquire, drill and produce
+- **Assessment** — the gate criteria, readable here and claimable on the Assessment tab
+
+Keeping the criteria in the syllabus and the claiming somewhere else is
+deliberate: you should be able to read what you are working toward without being
+one click from ticking it.
 
 ## The teaching layer
 
@@ -95,12 +178,30 @@ Each phase is a **module** worth credits equal to its practice hours, with a cod
 full** when every gate criterion passes. Hours are attendance; the award is
 evidence, and hours alone never complete a module.
 
-**Gates unlock in order.** A locked gate still shows its criteria — you should
-be able to see what you are working toward — but it cannot be ticked, and it
-says which phase is holding it shut and how many of that gate's criteria are
-still open, with a link to it. The plan's whole claim is that each phase is
-built on the last, so claiming gate three before gate two passes would not mean
-anything.
+## A gate costs more than a click
+
+Passing a gate used to cost one click, which made the transcript worth about as
+much as the click. Three conditions now stand between you and a claim, all of
+them printed on the gate and ticked off as they come true:
+
+1. **The module before it has passed in full.** The plan's whole claim is that
+   each module is built on the last, so claiming gate three before gate two
+   passes would not mean anything. A locked gate still shows its criteria — you
+   should be able to see what you are working toward — and says which module is
+   holding it shut, with a link to it.
+2. **80% of that module's own sessions are logged.** A gate is a claim about
+   work you did. Until the work exists the gate shows its criteria to read and
+   offers no controls at all — no form, nothing to tick.
+3. **Every criterion carries written evidence and a named check.** Forty
+   characters minimum on *what you did, and what it produced*, plus *the person,
+   audience or record that verified it*. Only then does the claim box enable.
+
+None of this can stop someone lying to themselves. It can stop a gate being
+passed absent-mindedly, which is most of what a bare checkbox was.
+
+A fully claimed module **seals itself**: the record goes read-only until you
+deliberately reopen it, so going back to edit a passed gate reads as withdrawing
+a claim rather than tidying a form.
 
 The transcript lists every module with weeks, sessions done, gate progress,
 credits and status, plus your standing: credits earned of the total and modules
@@ -198,6 +299,8 @@ panel built from work you actually logged:
   the headline bar. Hours credited for prior experience are drawn in a paler
   tone behind the hours you logged, so the bar never claims you did work you
   did not do.
+- **Where you stand against the schedule** — ahead, level or behind, in sessions
+  and in days, with a projected finish date at your current rate.
 - **This week**, **week streak**, **gate criteria passed**, **sessions done**.
 - A plain line on where you stand, and markers for what you have reached with
   the next one along.
@@ -267,10 +370,12 @@ assets/js/data/dispatch.js       6 traditions × 12 entries
 assets/js/engine.js              the planner: verdict, scope, phases, schedule, exports
 assets/js/dispatch-core.js       deterministic date-based selection
 assets/js/store.js               localStorage persistence
-assets/js/stats.js               streaks, hours banked, momentum (pure, tested)
+assets/js/stats.js               streaks, hours banked, momentum, pace, gate
+                                 rules, transcript (pure, tested)
 assets/js/app.js                 theme, toasts, download/copy helpers
 assets/js/index.js               catalog + commission form + live preview
-assets/js/program.js             program rendering, progress, gates, log
+assets/js/program.js             the plan workspace: tabs, session unlocking,
+                                 pace, syllabus, gate assessment, log
 assets/js/dispatch-page.js       dispatch page
 tests/                           node + browser test harnesses
 ```
@@ -279,8 +384,14 @@ tests/                           node + browser test harnesses
 
 ```sh
 node tests/plan.test.js        # data integrity + 2,340 planner cases, no dependencies
-node tests/browser.test.js     # end-to-end in Chromium; needs playwright installed
+
+npm install                    # playwright, for the browser suite only
+npx http-server -p 8099 -s .   # in another shell
+node tests/browser.test.js     # end-to-end in Chromium
 ```
+
+The site itself has no build step and no runtime dependencies. `package.json`
+exists for the browser test harness and nothing else.
 
 `plan.test.js` checks curriculum integrity (pillar weights sum to 1, every drill has a
 dose, protocol and mistake, every pillar has stages and a standard, hour thresholds
@@ -294,13 +405,24 @@ steps or a drill protocol** — the check that stops plans drifting back toward
 vagueness — and that every authored step is a written instruction rather than a
 fragment.
 
-`browser.test.js` additionally checks that the session card does not repeat its heading,
-that stages, drill mistakes, standards and numbered steps render, that the "Before week 1"
-section exists, that your stated objective actually appears in the sessions, and that no
-page scrolls sideways at 390px. It also asserts the walkthrough lists every step with
-exactly one marked current, that the glossary defines the plan's own vocabulary, that the
-first gate is open and every later one is locked with its criteria disabled, and that
-every phase carries a teaching brief with three defined terms.
+`plan.test.js` also covers the pace arithmetic (a plan that has not started is
+never behind, everything due logged is level, working past today's line is
+ahead, percentages stay bounded on every discipline) and the gate rules (work
+alone does not open a criterion, a six-character statement is not evidence, a
+statement without a named check is not enough, passing a module unlocks the next
+one but does not make it claimable, reopening breaks the seal).
+
+`browser.test.js` drives the tabbed plan. It checks that exactly one view is
+rendered at a time and the tab you left comes back on reload; that the pace panel
+reaches a verdict and prints no `NaN`; that the next session is unreachable until
+this one is logged and then opens by name; that the programme specification
+carries its fields and does not overclaim; that each module renders its code,
+numbered outcomes and specification sections; that an unsittable gate offers no
+controls at all, a thin statement is rejected, and evidence plus a named check
+makes a criterion claimable; that the session card does not repeat its heading;
+that stages, drill mistakes, standards and numbered steps render; that "Before
+week 1" exists; that your stated objective appears in the sessions; and that no
+page scrolls sideways at 390px.
 
 The planner tests assert that no single session exceeds the sitting ceiling, that none
 falls under ten minutes, and that a normal week sums to exactly the minutes you asked
