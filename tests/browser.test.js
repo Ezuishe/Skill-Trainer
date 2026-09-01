@@ -94,60 +94,72 @@ function watch(page, label) {
   await page.locator('#builder button[type="submit"]').click();
   await page.waitForURL('**/program.html', { timeout: 20000 });
   await page.waitForLoadState('networkidle').catch(() => {});
-  await page.waitForSelector('.phase', { timeout: 10000 });
+  await page.waitForSelector('.planbar', { timeout: 10000 });
 
   const title = await page.title();
   console.log('\nprogram page title:', title);
-  const phases = await page.locator('.phase').count();
-  const weeks = await page.locator('.week').count();
-  const gates = await page.locator('.gate').count();
-  console.log('phases:', phases, 'weeks:', weeks, 'gates:', gates);
-  if (weeks !== 16) problems.push(`expected 16 week rows, got ${weeks}`);
-  if (phases < 1) problems.push('no phases rendered');
-  if (gates !== phases) problems.push('gate count != phase count');
 
-  const bodyText = await page.locator('body').innerText();
-  if (/undefined|NaN|\[object Object\]/.test(bodyText)) {
-    problems.push('program page contains undefined/NaN/[object Object]');
-    const m = bodyText.match(/.{60}(undefined|NaN|\[object Object\]).{60}/);
-    if (m) problems.push('  context: ' + m[0].replace(/\n/g, ' '));
+  // "the page is too long": the plan is now seven views behind a tab bar, and
+  // only the active one is in the DOM.
+  const tabCount = await page.locator('.tabs .tab').count();
+  const tabLabels = await page.locator('.tabs .tab').allInnerTexts();
+  console.log('tabs:', tabLabels.map(t => t.replace(/\n/g, ' ')).join(' | '));
+  if (tabCount !== 7) problems.push(`expected 7 plan tabs, got ${tabCount}`);
+  const openViews = await page.locator('#view-root section[data-view]').count();
+  if (openViews !== 1) problems.push(`exactly one view should be rendered, got ${openViews}`);
+
+  const tab = async (name) => {
+    await page.locator(`.tab[data-tab="${name}"]`).click();
+    await page.waitForSelector(`#view-root section[data-view="${name}"]`, { timeout: 5000 });
+    await page.waitForTimeout(150);
+  };
+
+  // the plan bar never leaves: which plan, which week, and the pace verdict
+  const barText = await page.locator('.planbar__inner').innerText();
+  console.log('plan bar:', barText.replace(/\n/g, ' | '));
+  if (!/week|starts|complete/i.test(barText)) problems.push('plan bar does not say which week you are in');
+  const chipState = await page.locator('.pacechip').getAttribute('data-state');
+  if (!chipState) problems.push('plan bar has no pace chip');
+
+  // ---------------------------------------------------------------- overview
+  await tab('overview');
+
+  // "a progress tracker to see whether user is right on schedule behind or infront"
+  const paceState = await page.locator('.pace').getAttribute('data-state');
+  const paceText = await page.locator('.pace').innerText();
+  console.log('pace panel:', paceState, '|', paceText.replace(/\n/g, ' ').slice(0, 180));
+  if (!['on', 'ahead', 'behind', 'not-started', 'finished'].includes(paceState)) {
+    problems.push(`pace panel has no verdict, got "${paceState}"`);
   }
-
-  // The reported bug: the session card printed the drill name and dose three times.
-  const todayCard = await page.locator('.section.no-print .card').first().innerText();
-  const drillLine = await page.locator('.section.no-print .card .drill__protocol').count();
-  if (drillLine) {
-    const heading = await page.locator('.section.no-print .card h3').innerText();
-    const occurrences = todayCard.split(heading).length - 1;
-    console.log(`session card repeats its heading ${occurrences}x:`, heading);
-    if (occurrences > 1) problems.push(`session card repeats "${heading}" ${occurrences} times`);
+  if (!/ahead|behind|on schedule|not started|complete/i.test(paceText)) {
+    problems.push('pace panel does not say ahead, behind or on schedule');
   }
+  if (!(await page.locator('.pace__marker').count())) problems.push('pace track has no "expected today" marker');
+  const paceCells = await page.locator('.pace__cell').count();
+  if (paceCells < 4) problems.push(`expected the pace breakdown cells, got ${paceCells}`);
+  const paceWeeks = await page.locator('.pace .pw').count();
+  if (paceWeeks !== 16) problems.push(`expected 16 week bars in the pace chart, got ${paceWeeks}`);
+  if (/undefined|NaN/.test(paceText)) problems.push('pace panel prints undefined/NaN');
 
-  // the vagueness fix: sessions must carry numbered steps, and setup must exist
-  const stepLists = await page.locator('.steps').count();
-  const stepItems = await page.locator('.steps li').count();
-  console.log('step lists rendered:', stepLists, '| individual steps:', stepItems);
-  if (stepItems < 50) problems.push(`expected many numbered steps, got ${stepItems}`);
+  // retention: the status panel must show earned numbers, not decoration
+  const statusPanel = await page.locator('.status').count();
+  if (!statusPanel) problems.push('status panel missing');
+  const statusText = await page.locator('.status').innerText();
+  console.log('status panel:', statusText.replace(/\n/g, ' | ').slice(0, 180));
+  const statusLower = statusText.toLowerCase();
+  for (const label of ['hours banked', 'this week', 'week streak', 'gates', 'sessions']) {
+    if (!statusLower.includes(label)) problems.push(`status panel missing "${label}"`);
+  }
+  const markers = await page.locator('.status .marker').count();
+  if (markers < 1) problems.push('no progress markers rendered');
+  const creditSeg = await page.locator('.status .meter__credit').count();
+  if (!creditSeg) problems.push('credited-hours segment missing from the bar');
 
-  // the session card must not print its steps twice (once as a list, once as
-  // the run sheet) — that was the original duplication complaint
-  const cardStepLists = await page.locator('.section.no-print .card .steps').count();
-  if (cardStepLists > 0) problems.push('session card duplicates its steps alongside the run sheet');
-
-  // and durations must read like durations
-  const cardMeta = await page.locator('.section.no-print .card .mono.small.muted').first().innerText();
-  console.log('session card duration:', cardMeta);
-  if (/\d+\.\d+ hours/.test(cardMeta)) problems.push(`unreadable duration: ${cardMeta}`);
-  const setupSection = await page.locator('h2:has-text("Before week 1")').count();
-  if (!setupSection) problems.push('Before week 1 section missing');
-
-  // "I am still lost when trying to figure out the plan": there must be an
-  // explicit, ordered walkthrough with a live step count and a glossary.
+  // the ordered walkthrough, with a live step count and a glossary
   const walkSteps = await page.locator('.walk__step').count();
   const walkCurrent = await page.locator('.walk__step[data-state="current"]').count();
-  const walkBar = await page.locator('.walk__bar').innerText();
   const defs = await page.locator('.walk__gloss .defs dt').count();
-  console.log(`walkthrough steps: ${walkSteps} | current: ${walkCurrent} | bar: ${walkBar.replace(/\n/g, ' ')} | glossary terms: ${defs}`);
+  console.log(`walkthrough steps: ${walkSteps} | current: ${walkCurrent} | glossary terms: ${defs}`);
   if (walkSteps < 6) problems.push(`walkthrough should list every step, got ${walkSteps}`);
   if (walkCurrent !== 1) problems.push(`exactly one walkthrough step should be current, got ${walkCurrent}`);
   if (defs < 5) problems.push(`glossary should define the plan's own vocabulary, got ${defs}`);
@@ -156,77 +168,46 @@ function watch(page, label) {
     if (!walkText.includes(word)) problems.push(`walkthrough glossary missing "${word}"`);
   }
 
-  // "make the gates locked and only unlocked after previous is finished"
-  const gateStates = await page.locator('.gate').evaluateAll(
-    nodes => nodes.map(n => n.getAttribute('data-locked')));
-  const lockedInputs = await page.locator('.gate[data-locked="true"] input[disabled]').count();
-  const openInputs = await page.locator('.gate[data-locked="false"] input:not([disabled])').count();
-  console.log('gate lock states:', gateStates.join(','), '| disabled criteria:', lockedInputs);
-  if (gateStates[0] !== 'false') problems.push('the first gate must start unlocked');
-  if (gateStates.slice(1).some(s => s !== 'true')) problems.push('later gates must start locked');
-  if (!lockedInputs) problems.push('locked gate criteria are still tickable');
-  if (!openInputs) problems.push('the open gate has no tickable criteria');
-  const lockLine = await page.locator('.gate__lockline').first().innerText();
-  if (!/phase \d/i.test(lockLine)) problems.push('locked gate does not name what is blocking it');
+  await page.screenshot({ path: `${OUT}/03-program-top.png` });
 
-  // "it's still not educational enough": every phase must teach, not just list
-  const briefs = await page.locator('.brief').count();
-  const briefTerms = await page.locator('.brief__terms .defs dt').count();
-  const lesson = await page.locator('.section.no-print .card .lesson').count();
-  const phaseCount = await page.locator('.phase').count();
-  console.log(`teaching briefs: ${briefs}/${phaseCount} | vocabulary entries: ${briefTerms} | session lesson: ${lesson}`);
-  if (briefs !== phaseCount) problems.push(`every phase needs a teaching brief, got ${briefs} of ${phaseCount}`);
-  if (briefTerms < phaseCount * 3) problems.push(`expected 3 terms per phase, got ${briefTerms}`);
+  // ----------------------------------------------------------------- session
+  await tab('session');
+
+  const navText = await page.locator('.navsess__now').innerText();
+  console.log('session navigator:', navText.replace(/\n/g, ' | '));
+  const navMatch = navText.match(/session (\d+) of (\d+)/i);
+  if (!navMatch) problems.push(`navigator does not say where you are: "${navText}"`);
+  // The plan opens on the session dated today, so which number that is depends
+  // on when the suite runs. Everything below is relative to it.
+  const here = navMatch ? Number(navMatch[1]) : 1;
+  const totalSessions = navMatch ? Number(navMatch[2]) : 0;
+  if (totalSessions !== 80) problems.push(`expected 80 sessions in the plan, got ${totalSessions}`);
+
+  // "add option to access next day program after day 1 finished": the next
+  // session is shut until this one is logged, then it opens.
+  const nextBefore = await page.locator('.navsess__btn:has-text("Next")').isDisabled();
+  const unlockBefore = await page.locator('.unlock').getAttribute('data-state');
+  console.log(`before logging session ${here} — next disabled:`, nextBefore, '| unlock panel:', unlockBefore);
+  if (!nextBefore) problems.push(`session ${here + 1} was reachable before session ${here} was logged`);
+  if (unlockBefore !== 'shut') problems.push('the unlock panel should start shut');
+  const lockedChips = await page.locator('.chip[data-state="locked"]').count();
+  if (!lockedChips) problems.push('later sessions in the week are not shown as locked');
+
+  // the session card itself
+  const todayCard = await page.locator('#view-root .card').first().innerText();
+  const heading = await page.locator('#view-root .card h3').first().innerText();
+  const occurrences = todayCard.split(heading).length - 1;
+  console.log('session card repeats its heading', occurrences + 'x:', heading);
+  if (occurrences > 1) problems.push(`session card repeats "${heading}" ${occurrences} times`);
+  const cardStepLists = await page.locator('#view-root .card .steps').count();
+  if (cardStepLists > 0) problems.push('session card duplicates its steps alongside the run sheet');
+  const cardMeta = await page.locator('#view-root .card .mono.small.muted').first().innerText();
+  console.log('session card duration:', cardMeta);
+  if (/\d+\.\d+ hours/.test(cardMeta)) problems.push(`unreadable duration: ${cardMeta}`);
+  const lesson = await page.locator('#view-root .card .lesson').count();
   if (!lesson) problems.push('session card carries no teaching note');
-  // CSS uppercases the labels, so compare lowercased.
-  const briefText = (await page.locator('.brief').first().innerText()).toLowerCase();
-  for (const heading of ['why it works', 'does not work', 'check your own work']) {
-    if (!briefText.includes(heading)) problems.push(`teaching brief missing "${heading}"`);
-  }
 
-  // retention: the status panel must show earned numbers, not decoration
-  const statusPanel = await page.locator('.status').count();
-  if (!statusPanel) problems.push('status panel missing');
-  const statusText = await page.locator('.status').innerText();
-  console.log('status panel:', statusText.replace(/\n/g, ' | ').slice(0, 200));
-  // CSS uppercases these labels, so compare case-insensitively.
-  const statusLower = statusText.toLowerCase();
-  for (const label of ['hours banked', 'this week', 'week streak', 'gates', 'sessions']) {
-    if (!statusLower.includes(label)) problems.push(`status panel missing "${label}"`);
-  }
-  const markers = await page.locator('.status .marker').count();
-  if (markers < 1) problems.push('no progress markers rendered');
-
-  // credited prior experience must be visually separated from logged work
-  const creditSeg = await page.locator('.status .meter__credit').count();
-  if (!creditSeg) problems.push('credited-hours segment missing from the bar');
-
-  // credits: the transcript must render as a record
-  const transcriptRows = await page.locator('.transcript tr').count();
-  const pills = await page.locator('.transcript .pill').count();
-  console.log('transcript rows:', transcriptRows, '| status pills:', pills);
-  if (transcriptRows < 2) problems.push('transcript table missing rows');
-  if (pills < 1) problems.push('transcript status pills missing');
-  const standing = await page.locator('.transcript__standing').innerText();
-  if (!/credits/i.test(standing)) problems.push('credit standing missing');
-
-  // the reported bug: the first session must not ask you to recall a previous one
-  const firstSessionText = await page.evaluate(() => {
-    const prog = window.Store.loadProgram();
-    const s = prog.schedule[0].sessions[0];
-    return { first: s.first, minutes: s.minutes,
-             plan: s.plan.map(r => r.minutes + ' ' + r.name + ': ' + r.note).join(' | '),
-             sum: s.plan.reduce((a, r) => a + r.minutes, 0) };
-  });
-  console.log('first session plan:', firstSessionText.plan.slice(0, 150));
-  if (/last session|previous session/i.test(firstSessionText.plan)) {
-    problems.push('first session still refers to a previous session');
-  }
-  if (firstSessionText.sum !== firstSessionText.minutes) {
-    problems.push(`first session time plan sums to ${firstSessionText.sum}, session is ${firstSessionText.minutes}`);
-  }
-
-  // runsheet: per-step clock windows on the session card
+  // runsheet: per-step clock windows
   const rsRows = await page.locator('.runsheet .rs').count();
   const rsText = await page.locator('.runsheet').innerText();
   console.log('runsheet rows:', rsRows, '|', rsText.split('\n').slice(0, 4).join(' / '));
@@ -239,7 +220,6 @@ function watch(page, label) {
   const diffBtns = await page.locator('.record .choice').count();
   if (diffBtns !== 3) problems.push(`expected 3 difficulty options, got ${diffBtns}`);
 
-  // score a session and confirm it persists
   await page.locator('.record .scale__btn').nth(3).click();
   await page.waitForTimeout(300);
   await page.locator('.record .choice').nth(0).click();   // "too easy"
@@ -273,48 +253,253 @@ function watch(page, label) {
   console.log('evidence in IndexedDB:', persisted.join(', '));
   if (!persisted.length) problems.push('evidence not stored in IndexedDB');
 
-  // stages and mistakes should be present on the phase view
+  // log this session — that is what opens the next one
+  await page.locator('.record__done input').check();
+  await page.waitForTimeout(400);
+  const unlockAfter = await page.locator('.unlock').getAttribute('data-state');
+  const unlockText = await page.locator('.unlock').innerText();
+  console.log(`after logging session ${here} — unlock panel:`, unlockAfter, '|',
+    unlockText.replace(/\n/g, ' ').slice(0, 120));
+  if (unlockAfter !== 'open') problems.push(`logging session ${here} did not unlock session ${here + 1}`);
+  if (!unlockText.includes(`Session ${here + 1}`)) {
+    problems.push('the unlock panel does not name the next session');
+  }
+
+  await page.locator(`.unlock button:has-text("Open session ${here + 1}")`).click();
+  await page.waitForTimeout(400);
+  const navAfter = await page.locator('.navsess__now').innerText();
+  console.log('after opening the next one:', navAfter.replace(/\n/g, ' | '));
+  if (!new RegExp(`session ${here + 1} of`, 'i').test(navAfter)) {
+    problems.push('opening the next session did not move the navigator');
+  }
+  // and the one after that is shut again until this one is logged
+  const nextAgain = await page.locator('.navsess__btn:has-text("Next")').isDisabled();
+  if (!nextAgain) problems.push(`session ${here + 2} opened without session ${here + 1} being logged`);
+  // going back is always allowed
+  await page.locator('.navsess__btn:has-text("Previous")').click();
+  await page.waitForTimeout(300);
+  if (!new RegExp(`session ${here} of`, 'i').test(await page.locator('.navsess__now').innerText())) {
+    problems.push('could not navigate back to an earlier session');
+  }
+  await page.screenshot({ path: `${OUT}/11-session.png` });
+
+  // -------------------------------------------------------------- curriculum
+  await tab('curriculum');
+
+  const phases = await page.locator('.module').count();
+  console.log('modules:', phases);
+  if (phases < 1) problems.push('no modules rendered');
+
+  // "the courses still dont feel professional enough": a programme
+  // specification, a module index, and each module as a specification.
+  const specRows = await page.locator('.spec .spec__row').count();
+  const specText = (await page.locator('.spec').innerText()).toLowerCase();
+  console.log('programme specification rows:', specRows);
+  if (specRows < 8) problems.push(`programme specification is too thin, got ${specRows} rows`);
+  for (const field of ['programme', 'notional practice hours', 'assessment', 'award']) {
+    if (!specText.includes(field)) problems.push(`programme specification missing "${field}"`);
+  }
+  if (!specText.includes('not an accredited qualification')) {
+    problems.push('the specification overclaims — it must say it is self-certified');
+  }
+  const indexRows = await page.locator('.modindex tr').count();
+  if (indexRows !== phases + 1) problems.push(`module index should list every module, got ${indexRows - 1}`);
+  const modCodes = await page.locator('.module__code').count();
+  if (modCodes !== phases) problems.push('modules are missing their codes');
+  const los = await page.locator('.module .lo li').count();
+  if (los < phases * 3) problems.push(`expected numbered learning outcomes, got ${los}`);
+  const modSecLabels = (await page.locator('.mod-sec__label').allInnerTexts()).map(t => t.toLowerCase());
+  for (const label of ['learning outcomes', 'scheme of work', 'practical work', 'assessment']) {
+    if (!modSecLabels.some(l => l.includes(label))) {
+      problems.push(`module specification missing a "${label}" section`);
+    }
+  }
+
+  // every module must teach, not just list
+  const briefs = await page.locator('.brief').count();
+  const briefTerms = await page.locator('.brief__terms .defs dt').count();
+  console.log(`teaching briefs: ${briefs}/${phases} | vocabulary entries: ${briefTerms}`);
+  if (briefs !== phases) problems.push(`every module needs a teaching brief, got ${briefs} of ${phases}`);
+  if (briefTerms < phases * 3) problems.push(`expected 3 terms per module, got ${briefTerms}`);
+  const briefText = (await page.locator('.brief').first().innerText()).toLowerCase();
+  for (const h of ['why it works', 'does not work', 'check your own work']) {
+    if (!briefText.includes(h)) problems.push(`teaching brief missing "${h}"`);
+  }
+
   const stageCount = await page.locator('.stage').count();
   const mistakeCount = await page.locator('.drill__mistake').count();
   const standardCount = await page.locator('.phase__standard').count();
   console.log('stages:', stageCount, 'drill mistakes:', mistakeCount, 'standards:', standardCount);
   if (stageCount < 3) problems.push(`expected stage blocks, got ${stageCount}`);
   if (mistakeCount < 4) problems.push(`expected drill mistakes, got ${mistakeCount}`);
-  if (standardCount < 1) problems.push(`expected phase standards, got ${standardCount}`);
+  if (standardCount < 1) problems.push(`expected module standards, got ${standardCount}`);
+  await page.screenshot({ path: `${OUT}/12-curriculum.png` });
 
-  // the stated objective should appear in at least one produce session
-  const scheduleText = await page.locator('#program-root').innerText();
+  // ---------------------------------------------------------------- schedule
+  await tab('schedule');
+
+  const weeks = await page.locator('.week').count();
+  console.log('weeks:', weeks);
+  if (weeks !== 16) problems.push(`expected 16 week rows, got ${weeks}`);
+
+  const stepItems = await page.locator('.steps li').count();
+  console.log('individual steps in the schedule:', stepItems);
+  if (stepItems < 50) problems.push(`expected many numbered steps, got ${stepItems}`);
+
+  await page.locator('button:has-text("Expand all")').first().click();
+  await page.waitForTimeout(400);
+
+  // collapsed weeks are display:none, so this has to read an expanded schedule
+  const scheduleText = await page.locator('#view-root').innerText();
   if (!/Renegotiate my compensation/.test(scheduleText)) {
     problems.push('stated objective never appears in the sessions');
   }
-
-  await page.screenshot({ path: `${OUT}/03-program-top.png` });
-
-  // tick a session and a gate criterion, confirm persistence across reload
-  await page.locator('.week .session input[type="checkbox"]').first().check();
+  if (/undefined|NaN|\[object Object\]/.test(scheduleText)) {
+    problems.push('schedule view contains undefined/NaN/[object Object]');
+  }
+  await page.locator('.week').nth(1).scrollIntoViewIfNeeded();
   await page.waitForTimeout(300);
-  await page.locator('.gate .check input').first().check();
+  await page.screenshot({ path: `${OUT}/04-schedule.png` });
+
+  // ticking sessions here must move the banked-hours bar, and persist
+  // click() rather than check(): ticking rebuilds the view, and check() would
+  // keep retrying against a node that no longer exists.
+  const logged = () => page.evaluate(() =>
+    Object.keys(window.Store.getProgress(window.Store.loadProgram().id).sessions).length);
+  const beforeTick = await logged();
+  const boxes = page.locator('.week .session input[type="checkbox"]');
+  await boxes.nth(0).click();
   await page.waitForTimeout(300);
-  const beforeReload = await page.locator('.status .meter--lg .meter__fill').first().getAttribute('style');
+  await boxes.nth(2).click();
+  await page.waitForTimeout(300);
+  const afterTick = await logged();
+  console.log('sessions logged before/after ticking:', beforeTick, '->', afterTick);
+  if (afterTick <= beforeTick) problems.push('ticking a session in the schedule did not log it');
+  // and the week it happened in stays open
+  const stillOpen = await page.locator('.week[data-open="true"]').count();
+  if (stillOpen < 2) problems.push('ticking a session folded the schedule back up');
+
+  // -------------------------------------------------------------- assessment
+  await tab('assessment');
+
+  const gates = await page.locator('.gate').count();
+  console.log('gates:', gates, 'modules:', phases);
+  if (gates !== phases) problems.push('gate count != module count');
+
+  const gateStates = await page.locator('.gate').evaluateAll(
+    nodes => nodes.map(n => n.getAttribute('data-locked')));
+  console.log('gate lock states:', gateStates.join(','));
+  if (gateStates[0] !== 'false') problems.push('the first gate must start unlocked');
+  if (gateStates.slice(1).some(s => s !== 'true')) problems.push('later gates must start locked');
+  const lockLine = await page.locator('.gate[data-locked="true"] .gate__lockline').first().innerText();
+  if (!/phase \d|module \d/i.test(lockLine)) problems.push('locked gate does not name what is blocking it');
+
+  // "for gate to unlock I dont think it should be that easy as just clicking":
+  // the gate states its three conditions, and the criteria cannot be ticked
+  // until the module's work is logged and the evidence is written.
+  const reqs = await page.locator('.gate').first().locator('.req').count();
+  const reqText = (await page.locator('.gate').first().locator('.gate__reqs').innerText()).toLowerCase();
+  console.log('gate requirements:', reqs, '|', reqText.replace(/\n/g, ' / ').slice(0, 200));
+  if (reqs !== 3) problems.push(`the gate should state three conditions, got ${reqs}`);
+  if (!/sessions logged/.test(reqText)) problems.push('the gate does not require the module\'s work');
+  if (!/written evidence/.test(reqText)) problems.push('the gate does not require written evidence');
+
+  // Gate 1's criteria are readable — you should know what you are working
+  // toward — but until the module's work is logged there is nothing to tick
+  // and no form to fill in.
+  const firstGateCrits = await page.locator('.gate').first().locator('.crit').count();
+  const firstGateInputs = await page.locator('.gate').first().locator('input').count();
+  console.log('criteria on gate 1:', firstGateCrits, '| controls offered:', firstGateInputs);
+  if (!firstGateCrits) problems.push('gate 1 has no criteria');
+  if (firstGateInputs) {
+    problems.push('gate 1 offered controls before the module\'s work was logged');
+  }
+  const lockedInputs = await page.locator('.gate[data-locked="true"] input').count();
+  if (lockedInputs) problems.push('a locked gate is still offering controls');
+  const lockedCrits = await page.locator('.gate[data-locked="true"] .crit').count();
+  if (!lockedCrits) problems.push('a locked gate hides its criteria — they should still be readable');
+
+  // log the whole of module 1, which is what opens its gate
+  await page.evaluate(() => {
+    const prog = window.Store.loadProgram();
+    prog.schedule.forEach(w => {
+      if (w.phase.index !== 1) return;
+      w.sessions.forEach(s => {
+        const k = 'w' + w.number + 'd' + s.day;
+        const p = window.Store.getProgress(prog.id);
+        if (!p.sessions[k]) window.Store.toggleSession(prog.id, k, s.hours);
+      });
+    });
+  });
   await page.reload({ waitUntil: 'networkidle' });
-  await page.waitForTimeout(500);
-  const afterReload = await page.locator('.status .meter--lg .meter__fill').first().getAttribute('style');
-  console.log('progress meter before/after reload:', beforeReload, '/', afterReload);
-  if (beforeReload !== afterReload) problems.push('progress did not persist across reload');
-  const checkedNow = await page.locator('.gate .check input:checked').count();
-  if (checkedNow < 1) problems.push('gate criterion did not persist');
+  await page.waitForSelector('.gate', { timeout: 5000 });
+  await page.waitForTimeout(300);
 
-  // ticking a session must move the banked-hours bar, not just the session count
-  const bankedBefore = await page.locator('.status .status__now').first().innerText();
-  await page.locator('.week .session input[type="checkbox"]').nth(1).check();
-  await page.waitForTimeout(400);
-  const bankedAfter = await page.locator('.status .status__now').first().innerText();
-  console.log('banked hours before/after logging a session:', bankedBefore, '->', bankedAfter);
-  if (bankedBefore === bankedAfter && Number(bankedAfter) === 0) {
-    problems.push('logging a session did not change banked hours');
+  const openedForms = await page.locator('.gate').first().locator('.crit textarea').count();
+  console.log('evidence forms on the open gate:', openedForms);
+  if (!openedForms) problems.push('doing the work did not open the gate for assessment');
+  const stillDisabled = await page.locator('.gate').first().locator('.crit__claim input[disabled]').count();
+  console.log('claim boxes still disabled with no evidence:', stillDisabled);
+  if (stillDisabled !== openedForms) {
+    problems.push('criteria became claimable on work alone, with no evidence written');
   }
 
-  // log entry
+  // a thin statement is not evidence
+  await page.locator('.gate').first().locator('.crit textarea').first().fill('did it');
+  await page.locator('.gate').first().locator('.crit textarea').first().dispatchEvent('change');
+  await page.waitForTimeout(300);
+  const afterThin = await page.locator('.gate').first().locator('.crit').first()
+    .locator('.crit__claim input[disabled]').count();
+  if (afterThin !== 1) problems.push('a six-character statement was accepted as evidence');
+
+  // a real statement plus a named check makes it claimable
+  await page.locator('.gate').first().locator('.crit textarea').first()
+    .fill('Delivered the full ten-minute talk to the Tuesday meetup without notes and recorded the whole thing.');
+  await page.locator('.gate').first().locator('.crit textarea').first().dispatchEvent('change');
+  await page.waitForTimeout(300);
+  await page.locator('.gate').first().locator('.crit input[type="text"]').first()
+    .fill('Priya, who ran the meetup');
+  await page.locator('.gate').first().locator('.crit input[type="text"]').first().dispatchEvent('change');
+  await page.waitForTimeout(400);
+  const critState = await page.locator('.gate').first().locator('.crit').first().getAttribute('data-state');
+  console.log('first criterion after evidence:', critState);
+  if (critState !== 'ready') problems.push(`evidence did not make the criterion claimable (${critState})`);
+
+  await page.locator('.gate').first().locator('.crit__claim input:not([disabled])').first().check();
+  await page.waitForTimeout(400);
+  const claimed = await page.evaluate(() =>
+    Object.keys(window.Store.getProgress(window.Store.loadProgram().id).gates).length);
+  console.log('criteria claimed:', claimed);
+  if (claimed < 1) problems.push('claiming a criterion did not persist');
+
+  // transcript
+  const transcriptRows = await page.locator('.transcript tr').count();
+  const pills = await page.locator('.transcript .pill').count();
+  console.log('transcript rows:', transcriptRows, '| status pills:', pills);
+  if (transcriptRows < 2) problems.push('transcript table missing rows');
+  if (pills < 1) problems.push('transcript status pills missing');
+  const standing = await page.locator('.transcript__standing').innerText();
+  if (!/credits/i.test(standing)) problems.push('credit standing missing');
+  await page.screenshot({ path: `${OUT}/13-assessment.png` });
+
+  // ---------------------------------------------------------------- handbook
+  await tab('handbook');
+
+  const setupSection = await page.locator('h3:has-text("Before week 1")').count();
+  if (!setupSection) problems.push('Before week 1 section missing');
+  const ladderRows = await page.locator('.ladder__row').count();
+  if (ladderRows < 4) problems.push(`expected the full level ladder, got ${ladderRows}`);
+  const handbookText = await page.locator('#view-root').innerText();
+  if (/undefined|NaN|\[object Object\]/.test(handbookText)) {
+    problems.push('handbook view contains undefined/NaN/[object Object]');
+  }
+  await page.locator('.verdict').scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${OUT}/05-verdict.png` });
+
+  // --------------------------------------------------------------------- log
+  await tab('log');
+
   await page.locator('#log-input').fill('Practised anchoring aloud, 5 reps.\nHard: dropped the number twice.\nNext: record it.');
   await page.locator('button:has-text("Add entry")').click();
   await page.waitForTimeout(400);
@@ -322,17 +507,13 @@ function watch(page, label) {
   console.log('log entries:', logs);
   if (logs < 1) problems.push('log entry not saved');
 
-  // schedule screenshot
-  await page.locator('button:has-text("Expand all")').first().click();
+  // the tab you were on comes back with you
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForSelector('.planbar', { timeout: 5000 });
   await page.waitForTimeout(300);
-  await page.locator('.week').nth(1).scrollIntoViewIfNeeded();
-  await page.waitForTimeout(300);
-  await page.screenshot({ path: `${OUT}/04-schedule.png` });
-
-  // verdict section screenshot
-  await page.locator('.verdict').scrollIntoViewIfNeeded();
-  await page.waitForTimeout(300);
-  await page.screenshot({ path: `${OUT}/05-verdict.png` });
+  const restored = await page.locator('#view-root').getAttribute('data-tab');
+  console.log('tab after reload:', restored);
+  if (restored !== 'log') problems.push(`the plan did not reopen on the tab you left it on (${restored})`);
 
   // exports actually produce files
   const [dl] = await Promise.all([

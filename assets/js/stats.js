@@ -340,6 +340,65 @@
     return letters.slice(0, 3) + '-' + String(index).padStart(2, '0');
   }
 
+  /* --------------------------------------------------------------- gates */
+
+  /* A gate is an assessment, and passing one used to cost a click. It now
+   * costs three things, in this order:
+   *
+   *   1. The phase before it has to have passed in full. Ordering was already
+   *      here and it stays.
+   *   2. You have to have done most of the phase's scheduled work. Claiming
+   *      the outcome of a phase you did not run is not a claim about anything.
+   *   3. Every single criterion needs a written statement of what you did and
+   *      a named check — a person, a recording, a published result. The tick
+   *      is then a record of that evidence rather than a substitute for it.
+   *
+   * None of this can stop someone lying to themselves. It can stop the gate
+   * being passed by accident, which is what a one-click gate mostly was.
+   */
+  var WORK_REQUIRED = 0.8;
+  var STATEMENT_MIN = 40;
+  var VERIFIER_MIN = 2;
+
+  function gateKey(phase, i) { return 'p' + phase.index + 'c' + i; }
+
+  /* Sessions logged in this phase, which is the work the gate is about. */
+  function phaseWork(program, progress, phase) {
+    var total = 0, done = 0;
+    program.schedule.forEach(function (w) {
+      if (w.phase.index !== phase.index) return;
+      w.sessions.forEach(function (sn) {
+        total++;
+        if (progress.sessions['w' + w.number + 'd' + sn.day]) done++;
+      });
+    });
+    var required = Math.max(1, Math.ceil(total * WORK_REQUIRED));
+    return {
+      sessions: total,
+      done: done,
+      required: required,
+      remaining: Math.max(0, required - done),
+      pct: total ? Math.round((done / total) * 100) : 0,
+      met: done >= required
+    };
+  }
+
+  /* Is the written evidence for one criterion complete enough to claim on? */
+  function criterionEvidence(progress, phase, i) {
+    var ev = (progress.gateEvidence || {})[gateKey(phase, i)] || {};
+    var statement = String(ev.statement || '').trim();
+    var verifier = String(ev.verifier || '').trim();
+    return {
+      statement: statement,
+      verifier: verifier,
+      statementShort: Math.max(0, STATEMENT_MIN - statement.length),
+      hasStatement: statement.length >= STATEMENT_MIN,
+      hasVerifier: verifier.length >= VERIFIER_MIN,
+      complete: statement.length >= STATEMENT_MIN && verifier.length >= VERIFIER_MIN,
+      at: ev.updated || null
+    };
+  }
+
   /* Gates open in order. You cannot claim the gate for phase three while
    * phase two is unpassed, because the plan's whole claim is that each phase
    * is built on the last. Returns one entry per phase, in phase order. */
@@ -347,20 +406,166 @@
     var previousOpen = true;
     return program.phases.map(function (ph, i) {
       var criteria = ph.milestone.criteria.length;
-      var passed = 0;
+      var passed = 0, evidenced = 0;
       ph.milestone.criteria.forEach(function (_, c) {
-        if (progress.gates['p' + ph.index + 'c' + c]) passed++;
+        if (progress.gates[gateKey(ph, c)]) passed++;
+        if (criterionEvidence(progress, ph, c).complete) evidenced++;
       });
+      var work = phaseWork(program, progress, ph);
+      var locked = !previousOpen;
+      var complete = criteria > 0 && passed === criteria;
       var entry = {
         index: ph.index,
         criteria: criteria,
         passed: passed,
-        complete: criteria > 0 && passed === criteria,
-        locked: !previousOpen,
-        blockedBy: previousOpen ? null : program.phases[i - 1]
+        evidenced: evidenced,
+        work: work,
+        complete: complete,
+        locked: locked,
+        /* Ordering says the gate is yours to sit; the work requirement says
+         * whether you are allowed to sit it yet. Kept apart so the page can
+         * say which of the two is holding it. */
+        workReady: work.met,
+        claimable: !locked && work.met,
+        /* Once awarded it stays read-only until deliberately reopened. */
+        sealed: complete && !(progress.reopened || {})['p' + ph.index],
+        blockedBy: previousOpen ? null : program.phases[i - 1],
+        state: locked ? 'locked' : (complete ? 'passed' : (work.met ? 'open' : 'pending'))
       };
       previousOpen = previousOpen && entry.complete;
       return entry;
+    });
+  }
+
+  /* -------------------------------------------------------------- pace */
+
+  /* Ahead, on schedule, or behind — the question everyone actually has when
+   * they reopen a dated plan.
+   *
+   * Measured in sessions rather than hours, because a session is the unit the
+   * schedule is written in and the unit you fall behind by. "Expected" counts
+   * every session dated on or before today; anything else would let a plan
+   * that has not started yet report you behind.
+   */
+  function pace(program, progress, now) {
+    now = now || new Date();
+    var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    var total = 0, done = 0, expected = 0, doneOnTime = 0;
+    var nextDue = null, lastExpectedDate = null;
+    program.schedule.forEach(function (w) {
+      w.sessions.forEach(function (sn) {
+        total++;
+        var due = new Date(sn.date.getFullYear(), sn.date.getMonth(), sn.date.getDate());
+        var isDone = !!progress.sessions['w' + w.number + 'd' + sn.day];
+        if (isDone) done++;
+        if (due <= today) {
+          expected++;
+          lastExpectedDate = due;
+          if (isDone) doneOnTime++;
+        } else if (!nextDue) {
+          nextDue = due;
+        }
+      });
+    });
+
+    var delta = done - expected;
+    var started = expected > 0;
+    var finished = done >= total && total > 0;
+
+    /* Days of drift, so the number means something in a calendar rather than
+     * only inside the plan. */
+    var perWeek = Math.max(1, Math.round(total / Math.max(1, program.schedule.length)));
+    var daysPerSession = 7 / perWeek;
+    var driftDays = Math.round(Math.abs(delta) * daysPerSession);
+
+    var state, line;
+    if (!total) {
+      state = 'empty';
+      line = 'Nothing is scheduled.';
+    } else if (finished) {
+      state = 'finished';
+      line = 'Every scheduled session is logged. The plan is done; the gates are what is left.';
+    } else if (!started) {
+      state = 'not-started';
+      line = 'The plan has not started yet. First session is ' +
+        (nextDue ? window.Planner.fmtDate(nextDue) : 'scheduled shortly') + '.';
+    } else if (delta >= 1) {
+      state = 'ahead';
+      line = 'Ahead of schedule by ' + delta + ' session' + (delta === 1 ? '' : 's') +
+        (driftDays >= 1 ? ' — about ' + driftDays + ' day' + (driftDays === 1 ? '' : 's') + ' of work in hand' : '') +
+        '. Working ahead is fine; skipping the rest days it buys you is not.';
+    } else if (delta <= -1) {
+      var behind = Math.abs(delta);
+      state = 'behind';
+      line = 'Behind by ' + behind + ' session' + (behind === 1 ? '' : 's') +
+        (driftDays >= 1 ? ' — roughly ' + driftDays + ' day' + (driftDays === 1 ? '' : 's') : '') +
+        '. ' + (behind <= 2
+          ? 'That is one catch-up session, not a crisis. Do the next one short rather than skipping it.'
+          : 'Do not try to run them all back to back. Add one extra session a week until the gap closes, ' +
+            'or rebuild the plan on the hours you actually have.');
+    } else {
+      state = 'on';
+      line = 'On schedule. ' + done + ' of the ' + expected + ' sessions due by today are logged.';
+    }
+
+    /* Where the plan expects you to be, and where you are, on the same track. */
+    var expectedPct = total ? Math.round((expected / total) * 100) : 0;
+    var donePct = total ? Math.round((done / total) * 100) : 0;
+
+    /* If the last few weeks are the guide, when does this actually finish? */
+    var elapsedWeeks = Math.max(1, Math.ceil(expected / perWeek));
+    var rate = done / elapsedWeeks;                 /* sessions a week, actual */
+    var projected = null;
+    if (started && !finished && rate > 0.1) {
+      var weeksLeft = Math.ceil((total - done) / rate);
+      projected = window.Planner.addDays(today, weeksLeft * 7);
+    }
+
+    return {
+      total: total,
+      done: done,
+      expected: expected,
+      doneOnTime: doneOnTime,
+      delta: delta,
+      behind: Math.max(0, -delta),
+      ahead: Math.max(0, delta),
+      driftDays: driftDays,
+      state: state,
+      line: line,
+      expectedPct: expectedPct,
+      donePct: donePct,
+      adherence: expected ? Math.round((Math.min(done, expected) / expected) * 100) : null,
+      perWeek: perWeek,
+      projectedEnd: projected,
+      plannedEnd: program.endDate,
+      nextDue: nextDue,
+      lastExpectedDate: lastExpectedDate
+    };
+  }
+
+  /* Week-by-week planned against logged, for the small chart under the
+   * headline. Twelve weeks is as much as reads at a glance. */
+  function paceWeeks(program, progress, now) {
+    now = now || new Date();
+    var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return program.schedule.map(function (w) {
+      var done = 0, due = 0;
+      w.sessions.forEach(function (sn) {
+        var d = new Date(sn.date.getFullYear(), sn.date.getMonth(), sn.date.getDate());
+        if (d <= today) due++;
+        if (progress.sessions['w' + w.number + 'd' + sn.day]) done++;
+      });
+      var past = w.endDate < today;
+      return {
+        number: w.number,
+        planned: w.sessions.length,
+        due: due,
+        done: done,
+        current: today >= w.startDate && today <= window.Planner.addDays(w.endDate, 1),
+        past: past,
+        state: !due ? 'future' : (done >= due ? 'met' : (done === 0 && past ? 'missed' : 'short'))
+      };
     });
   }
 
@@ -408,11 +613,15 @@
         criteriaPassed: passed,
         awarded: awarded,
         locked: locks[phIdx].locked,
+        claimable: locks[phIdx].claimable,
+        workPct: locks[phIdx].work.pct,
         status: awarded
           ? 'Awarded'
           : locks[phIdx].locked
             ? 'Locked'
-            : (done > 0 ? 'In progress' : 'Not started'),
+            : locks[phIdx].claimable
+              ? 'Assessable'
+              : (done > 0 ? 'In progress' : 'Not started'),
         weeks: ph.weekStart + '\u2013' + ph.weekEnd
       };
     });
@@ -473,7 +682,9 @@
       momentum: momentum(program, progress, now, s, w),
       markers: markers(program, progress, l, w, s, totals),
       transcript: transcript(program, progress),
-      calibration: calibration(program, progress)
+      calibration: calibration(program, progress),
+      pace: pace(program, progress, now),
+      paceWeeks: paceWeeks(program, progress, now)
     };
   }
 
@@ -481,6 +692,13 @@
     build: build,
     transcript: transcript,
     gateLocks: gateLocks,
+    criterionEvidence: criterionEvidence,
+    phaseWork: phaseWork,
+    pace: pace,
+    paceWeeks: paceWeeks,
+    workRequired: WORK_REQUIRED,
+    statementMin: STATEMENT_MIN,
+    verifierMin: VERIFIER_MIN,
     calibration: calibration,
     ladder: ladder,
     thisWeek: thisWeek,

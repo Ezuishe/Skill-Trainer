@@ -431,7 +431,24 @@ check('hours alone do not grant full credits',
   t1.modules[0].earned < t1.modules[0].credits,
   t1.modules[0].earned + '/' + t1.modules[0].credits);
 check('but credits did accrue', t1.modules[0].earned > 0, String(t1.modules[0].earned));
-check('status is in progress', t1.modules[0].status === 'In progress', t1.modules[0].status);
+/* Every session of the module is logged, so the gate is now sittable — which
+   is a different state from "in progress" and the transcript says so. */
+check('a fully worked module reads as assessable',
+  t1.modules[0].status === 'Assessable', t1.modules[0].status);
+
+/* Half the module logged is still in progress: the gate is not open yet. */
+var halfProgress = { id: tp.id, sessions: {}, gates: {}, logs: [], hours: 0, gateEvidence: {} };
+var m1Keys = [];
+tp.schedule.forEach(function (w) {
+  if (w.phase.index !== 1) return;
+  w.sessions.forEach(function (sn) { m1Keys.push('w' + w.number + 'd' + sn.day); });
+});
+m1Keys.slice(0, Math.floor(m1Keys.length / 2)).forEach(function (k) {
+  halfProgress.sessions[k] = '2026-09-01';
+});
+check('a half-worked module is in progress',
+  Stats.transcript(tp, halfProgress).modules[0].status === 'In progress',
+  Stats.transcript(tp, halfProgress).modules[0].status);
 
 /* Now pass the gate. */
 tp.phases[0].milestone.criteria.forEach(function (_, i) { tpr.gates['p1c' + i] = '2026-09-05'; });
@@ -444,6 +461,154 @@ check('awarding increases total credits', t2.creditsEarned > t1.creditsEarned);
 check('modules awarded counts up', t2.modulesAwarded === 1);
 check('current module moves to the next one', t2.current && t2.current.index === 2);
 check('credits never exceed the total', t2.creditsEarned <= t2.creditsTotal);
+
+/* --- gates cost more than a click -------------------------------------- */
+
+/* The rule set: the module before it has to have passed, most of the module's
+   own sessions have to be logged, and every criterion needs a written
+   statement plus a named check. */
+
+function gateProgress(program) {
+  return { id: program.id, sessions: {}, gates: {}, logs: [], hours: 0, gateEvidence: {}, reopened: {} };
+}
+
+var gp = Planner.build({
+  disciplineId: 'speaking-presence', weeks: 12, hoursPerWeek: 7, daysPerWeek: 4,
+  level: 'novice', startDate: '2026-08-24'
+});
+var gpr = gateProgress(gp);
+
+var g0 = Stats.gateLocks(gp, gpr);
+check('the first gate is not locked by ordering', g0[0].locked === false);
+check('but it is not sittable with no work logged', g0[0].claimable === false);
+check('a fresh first gate reads as pending', g0[0].state === 'pending', g0[0].state);
+check('later gates are locked by ordering', g0[1].locked === true);
+check('the work requirement is a real fraction of the module',
+  g0[0].work.required > 1 && g0[0].work.required <= g0[0].work.sessions,
+  g0[0].work.required + '/' + g0[0].work.sessions);
+
+/* Log everything in module 1. */
+var g1Keys = [];
+gp.schedule.forEach(function (w) {
+  if (w.phase.index !== 1) return;
+  w.sessions.forEach(function (sn) { g1Keys.push('w' + w.number + 'd' + sn.day); });
+});
+g1Keys.forEach(function (k) { gpr.sessions[k] = '2026-09-01'; });
+
+var g1 = Stats.gateLocks(gp, gpr);
+check('doing the work opens the gate', g1[0].claimable === true);
+check('an open gate with no evidence has none evidenced', g1[0].evidenced === 0);
+
+/* Evidence that is too thin does not count. */
+gpr.gateEvidence['p1c0'] = { statement: 'did it', verifier: 'me' };
+check('a one-line statement is not evidence',
+  Stats.criterionEvidence(gpr, gp.phases[0], 0).complete === false);
+
+gpr.gateEvidence['p1c0'] = {
+  statement: 'Ran the full ten-minute talk to the Tuesday meetup, unscripted, and recorded it.',
+  verifier: ''
+};
+check('a statement without a named check is not enough',
+  Stats.criterionEvidence(gpr, gp.phases[0], 0).complete === false);
+
+gpr.gateEvidence['p1c0'].verifier = 'Priya, who ran the meetup';
+check('statement plus a named check completes one criterion',
+  Stats.criterionEvidence(gpr, gp.phases[0], 0).complete === true);
+check('the gate counts completed evidence',
+  Stats.gateLocks(gp, gpr)[0].evidenced === 1);
+
+/* Evidence on every criterion, then claim them all. */
+gp.phases[0].milestone.criteria.forEach(function (_, i) {
+  gpr.gateEvidence['p1c' + i] = {
+    statement: 'Ran the full ten-minute talk to the Tuesday meetup, unscripted, and recorded it.',
+    verifier: 'Priya, who ran the meetup'
+  };
+  gpr.gates['p1c' + i] = '2026-09-05';
+});
+var g2 = Stats.gateLocks(gp, gpr);
+check('a fully claimed gate is complete', g2[0].complete === true);
+check('a passed gate seals itself', g2[0].sealed === true);
+check('passing module 1 unlocks module 2', g2[1].locked === false);
+check('but module 2 still needs its own work done', g2[1].claimable === false);
+
+gpr.reopened = { p1: '2026-09-06' };
+check('reopening a module breaks the seal', Stats.gateLocks(gp, gpr)[0].sealed === false);
+
+/* --- pace: ahead, level, behind ---------------------------------------- */
+
+var pp = Planner.build({
+  disciplineId: 'negotiation', weeks: 12, hoursPerWeek: 8, daysPerWeek: 4,
+  level: 'novice', startDate: '2026-08-24'
+});
+var PACE_NOW = new Date(2026, 8, 16); // Wed 16 Sep 2026, week 4
+
+function paceWith(fraction) {
+  var pr = gateProgress(pp);
+  var due = [];
+  pp.schedule.forEach(function (w) {
+    w.sessions.forEach(function (sn) {
+      if (sn.date <= PACE_NOW) due.push('w' + w.number + 'd' + sn.day);
+    });
+  });
+  due.slice(0, Math.round(due.length * fraction)).forEach(function (k) {
+    pr.sessions[k] = '2026-09-01';
+  });
+  return Stats.pace(pp, pr, PACE_NOW);
+}
+
+var pNone = Stats.pace(pp, gateProgress(pp), PACE_NOW);
+check('nothing logged mid-plan reads as behind', pNone.state === 'behind', pNone.state);
+check('behind is counted in sessions', pNone.behind === pNone.expected, String(pNone.behind));
+check('expected never exceeds the total', pNone.expected <= pNone.total);
+
+var pAll = paceWith(1);
+check('everything due logged is on schedule', pAll.state === 'on', pAll.state);
+check('on schedule means zero drift', pAll.delta === 0, String(pAll.delta));
+check('adherence is a percentage', pAll.adherence === 100, String(pAll.adherence));
+
+/* Log every session in the plan, including ones not due yet. */
+var prAhead = gateProgress(pp);
+pp.schedule.forEach(function (w) {
+  w.sessions.forEach(function (sn) { prAhead.sessions['w' + w.number + 'd' + sn.day] = '2026-09-01'; });
+});
+var pAhead = Stats.pace(pp, prAhead, PACE_NOW);
+check('logging the whole plan early reads as finished', pAhead.state === 'finished', pAhead.state);
+
+/* Work a few sessions past today's line but not the whole plan. */
+var prSome = gateProgress(pp);
+var all = [];
+pp.schedule.forEach(function (w) {
+  w.sessions.forEach(function (sn) { all.push({ k: 'w' + w.number + 'd' + sn.day, d: sn.date }); });
+});
+var dueCount = all.filter(function (x) { return x.d <= PACE_NOW; }).length;
+all.slice(0, dueCount + 3).forEach(function (x) { prSome.sessions[x.k] = '2026-09-01'; });
+var pSome = Stats.pace(pp, prSome, PACE_NOW);
+check('working past the line reads as ahead', pSome.state === 'ahead', pSome.state);
+check('ahead is counted in sessions', pSome.ahead === 3, String(pSome.ahead));
+check('drift is also expressed in days', pSome.driftDays >= 1, String(pSome.driftDays));
+
+var pBefore = Stats.pace(pp, gateProgress(pp), new Date(2026, 7, 1));
+check('a plan that has not started is not behind', pBefore.state === 'not-started', pBefore.state);
+
+var pw = Stats.paceWeeks(pp, prSome, PACE_NOW);
+check('one pace cell per week', pw.length === pp.schedule.length);
+check('exactly one week is current',
+  pw.filter(function (w) { return w.current; }).length === 1);
+check('future weeks are marked future',
+  pw[pw.length - 1].state === 'future', pw[pw.length - 1].state);
+
+/* Pace has to hold up on every discipline, at awkward sizes. */
+DISCIPLINES.forEach(function (d) {
+  var pr2 = Planner.build({
+    disciplineId: d.id, weeks: 4, hoursPerWeek: 3, daysPerWeek: 2,
+    level: 'novice', startDate: '2026-08-24'
+  });
+  var pc = Stats.pace(pr2, gateProgress(pr2), new Date(2026, 8, 2));
+  check(d.id + ' pace builds', typeof pc.line === 'string' && pc.line.length > 10);
+  check(d.id + ' pace percentages bounded',
+    pc.donePct >= 0 && pc.donePct <= 100 && pc.expectedPct >= 0 && pc.expectedPct <= 100);
+  check(d.id + ' pace has no NaN', !/NaN|undefined/.test(pc.line), pc.line);
+});
 
 /* Transcript must hold up for every discipline. */
 DISCIPLINES.forEach(function (d) {

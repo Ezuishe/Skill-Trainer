@@ -838,7 +838,7 @@
           rows.push({
             label: 'Rep ' + (r + 1) + ' of ' + doseCount,
             detail: r === 0
-              ? session.drill.protocol
+              ? 'The drill exactly as written above, at the stated dose. Watch for the mistake it names.'
               : 'Same again. Before you start, name the one thing you are fixing from the last rep.',
             kind: 'work',
             rule: 'repetition',
@@ -847,8 +847,16 @@
         }
         rows.push({ label: close.label, detail: close.detail, kind: 'close', minutes: repSplit[repSplit.length - 1] });
       } else {
+        /* The card and the Markdown export both print the drill in full, so the
+         * run sheet points at it rather than repeating its name and protocol
+         * a second time in the same view. */
         var drillBody = session.drill
-          ? { label: session.drill.name, detail: session.drill.protocol, dose: session.drill.dose }
+          ? {
+              label: 'The drill',
+              detail: 'Work the drill above at its dose, stopping between reps to note what went ' +
+                'wrong in that one rather than pushing straight into the next.',
+              dose: session.drill.dose
+            }
           : { label: 'The work', detail: session.title };
         var split3 = apportionMin([OPEN_SHARE, bodyShare, CLOSE_SHARE], total, 1);
         rows = [

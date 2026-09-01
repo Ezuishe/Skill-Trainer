@@ -13,7 +13,8 @@
     program: 'st.program',
     progress: 'st.progress',
     dispatch: 'st.dispatch',
-    theme: 'st.theme'
+    theme: 'st.theme',
+    view: 'st.view'
   };
 
   function read(key, fallback) {
@@ -76,7 +77,10 @@
     /* `records` holds what you thought of a session: a score, how hard it felt,
      * and a note. `sessions` stays the simple done-marker so older saved
      * progress keeps working. */
-    return { id: id, sessions: {}, gates: {}, logs: [], hours: 0, records: {}, steps: {} };
+    return {
+      id: id, sessions: {}, gates: {}, logs: [], hours: 0,
+      records: {}, steps: {}, gateEvidence: {}, reopened: {}
+    };
   }
 
   function getProgress(id) {
@@ -84,6 +88,8 @@
     if (!p || p.id !== id) return blankProgress(id);
     if (!p.records) p.records = {};
     if (!p.steps) p.steps = {};
+    if (!p.gateEvidence) p.gateEvidence = {};
+    if (!p.reopened) p.reopened = {};
     return p;
   }
 
@@ -107,6 +113,41 @@
   function markStep(id, key, on) {
     var p = getProgress(id);
     if (on) p.steps[key] = todayKey(); else delete p.steps[key];
+    return setProgress(p);
+  }
+
+  /* A gate criterion is an assessment, not a checkbox. Before it can be
+   * claimed you have to write down what you did and who or what checked it,
+   * so the tick points at something a second person could go and look at.
+   * That evidence lives here alongside the tick. */
+  var GATE_STATEMENT_MIN = 40;
+  var GATE_VERIFIER_MIN = 2;
+
+  function setGateEvidence(id, key, patch) {
+    var p = getProgress(id);
+    var current = p.gateEvidence[key] || {};
+    Object.keys(patch).forEach(function (k) {
+      if (patch[k] === null || patch[k] === '') delete current[k];
+      else current[k] = patch[k];
+    });
+    if (!Object.keys(current).length) delete p.gateEvidence[key];
+    else {
+      current.updated = todayKey();
+      p.gateEvidence[key] = current;
+    }
+    return setProgress(p);
+  }
+
+  function getGateEvidence(id, key) {
+    return getProgress(id).gateEvidence[key] || {};
+  }
+
+  /* An awarded module is read-only until it is deliberately reopened. Going
+   * back to edit a passed gate should feel like withdrawing a claim. */
+  function toggleModuleReopen(id, phaseIndex) {
+    var p = getProgress(id);
+    var k = 'p' + phaseIndex;
+    if (p.reopened[k]) delete p.reopened[k]; else p.reopened[k] = todayKey();
     return setProgress(p);
   }
 
@@ -192,6 +233,22 @@
     return d;
   }
 
+  /* ---------------------------------------------------------------- view */
+
+  /* Which tab of the plan you were last on, and which session you were last
+   * looking at. Reopening the plan should put you back where you were rather
+   * than at the top of a very long page. */
+  function getView() {
+    return read(KEYS.view, { tab: null, session: null });
+  }
+
+  function setView(patch) {
+    var v = getView();
+    Object.keys(patch).forEach(function (k) { v[k] = patch[k]; });
+    write(KEYS.view, v);
+    return v;
+  }
+
   /* --------------------------------------------------------------- theme */
 
   function getTheme() { return read(KEYS.theme, null); }
@@ -207,6 +264,13 @@
     getRecord: getRecord,
     clearRecord: clearRecord,
     toggleGateCriterion: toggleGateCriterion,
+    setGateEvidence: setGateEvidence,
+    getGateEvidence: getGateEvidence,
+    toggleModuleReopen: toggleModuleReopen,
+    gateStatementMin: GATE_STATEMENT_MIN,
+    gateVerifierMin: GATE_VERIFIER_MIN,
+    getView: getView,
+    setView: setView,
     markStep: markStep,
     addLog: addLog,
     deleteLog: deleteLog,
